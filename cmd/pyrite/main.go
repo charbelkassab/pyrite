@@ -1,4 +1,4 @@
-// Command natural-quant runs the natural-quant web application and CLI.
+// Command pyrite runs the pyrite web application and CLI.
 package main
 
 import (
@@ -15,43 +15,43 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/charbelkassab/natural-quant/examples"
-	"github.com/charbelkassab/natural-quant/internal/app"
-	"github.com/charbelkassab/natural-quant/internal/config"
-	"github.com/charbelkassab/natural-quant/internal/engine"
-	"github.com/charbelkassab/natural-quant/internal/market"
-	"github.com/charbelkassab/natural-quant/internal/server"
-	"github.com/charbelkassab/natural-quant/internal/strategy"
+	"github.com/charbelkassab/pyrite/examples"
+	"github.com/charbelkassab/pyrite/internal/app"
+	"github.com/charbelkassab/pyrite/internal/config"
+	"github.com/charbelkassab/pyrite/internal/engine"
+	"github.com/charbelkassab/pyrite/internal/market"
+	"github.com/charbelkassab/pyrite/internal/server"
+	"github.com/charbelkassab/pyrite/internal/strategy"
 )
 
 // version is overridden at build time with -ldflags "-X main.version=..."
 var version = "dev"
 
-const usage = `natural-quant — describe a trading strategy in plain language, then find out
+const usage = `pyrite — describe a trading strategy in plain language, then find out
 whether the result means anything.
 
 Usage:
-  natural-quant serve [flags]              start the web app (default)
-  natural-quant run "<strategy>"           one backtest, with its own critique
-  natural-quant run --example NAME         run a bundled strategy, no key needed
-  natural-quant examples                   list the bundled strategies
-  natural-quant report "<strategy>"        the full battery, as one document
+  pyrite serve [flags]              start the web app (default)
+  pyrite run "<strategy>"           one backtest, with its own critique
+  pyrite run --example NAME         run a bundled strategy, no key needed
+  pyrite examples                   list the bundled strategies
+  pyrite report "<strategy>"        the full battery, as one document
 
 Searching, because one backtest is one point in a space:
-  natural-quant sweep "<strategy>"         every combination, plus a heatmap and
+  pyrite sweep "<strategy>"         every combination, plus a heatmap and
                                            the overfitting statistics
-  natural-quant walkforward "<strategy>"   choose on one period, report on the next
-  natural-quant improve "<strategy>"       guided search against a blind holdout
+  pyrite walkforward "<strategy>"   choose on one period, report on the next
+  pyrite improve "<strategy>"       guided search against a blind holdout
 
 Reference data:
-  natural-quant ingest edgar               point-in-time share counts, from SEC filings
-  natural-quant ingest index               point-in-time S&P 500 membership
+  pyrite ingest edgar               point-in-time share counts, from SEC filings
+  pyrite ingest index               point-in-time S&P 500 membership
 
 Everything else:
-  natural-quant doctor                     check data, model providers and caches
-  natural-quant api                        print the strategy API reference
-  natural-quant cache clear [--ai]         clear cached market data and replies
-  natural-quant version
+  pyrite doctor                     check data, model providers and caches
+  pyrite api                        print the strategy API reference
+  pyrite cache clear [--ai]         clear cached market data and replies
+  pyrite version
 
 Common flags:
   --from        backtest start date, YYYY-MM-DD         (default 5 years ago)
@@ -77,12 +77,12 @@ A key is needed only to compile plain language. Everything else — including
 every search above — runs on --code-file with no key at all.
 
 Examples:
-  natural-quant serve --offline --open
-  natural-quant run --example golden-cross
-  natural-quant run "buy $100 of the biggest company by market cap each day, sell when it is no longer number one"
-  natural-quant sweep "golden cross on SPY" --from 2015-01-01
-  natural-quant walkforward "each month hold the 20 strongest S&P 500 names" --universe sp500
-  natural-quant report "a 60/40 portfolio rebalanced quarterly" --out report.md
+  pyrite serve --offline --open
+  pyrite run --example golden-cross
+  pyrite run "buy $100 of the biggest company by market cap each day, sell when it is no longer number one"
+  pyrite sweep "golden cross on SPY" --from 2015-01-01
+  pyrite walkforward "each month hold the 20 strongest S&P 500 names" --universe sp500
+  pyrite report "a 60/40 portfolio rebalanced quarterly" --out report.md
 `
 
 func main() {
@@ -127,7 +127,7 @@ func run() error {
 	case "examples":
 		return cmdExamples(args)
 	case "version", "-v", "--version":
-		fmt.Printf("natural-quant %s\n", version)
+		fmt.Printf("pyrite %s\n", version)
 		return nil
 	case "help", "-h", "--help":
 		fmt.Print(usage)
@@ -140,7 +140,7 @@ func run() error {
 
 // newApp loads configuration and constructs the application.
 func newApp(fs *flag.FlagSet, offline *bool) (*app.App, error) {
-	cfg, err := config.Load(os.Getenv("NQ_CONFIG"))
+	cfg, err := config.Load(os.Getenv("PYRITE_CONFIG"))
 	if err != nil {
 		return nil, err
 	}
@@ -176,7 +176,7 @@ func cmdServe(args []string) error {
 		fmt.Printf("  assets     %s (live, no rebuild needed)\n", *dev)
 	}
 
-	fmt.Printf("natural-quant %s\n", version)
+	fmt.Printf("pyrite %s\n", version)
 	fmt.Printf("  data       %s\n", a.Store.ProviderName())
 	fmt.Printf("  models     %s\n", a.DescribeRoutes())
 	fmt.Printf("  cache      %s\n", a.Cfg.DataDir)
@@ -209,14 +209,14 @@ func cmdRun(args []string) error {
 	fillClose := fs.Bool("fill-close", false, "fill at the same day's close instead of the next open")
 	codeFile := fs.String("code-file", "", "run this JavaScript strategy instead of compiling a prompt")
 	example := fs.String("example", "",
-		"run a bundled example; `natural-quant examples` lists them")
+		"run a bundled example; `pyrite examples` lists them")
 	costScan := fs.Bool("cost-scan", false, "also re-run at 0, 5, 20 and 50 bps of slippage")
 	impact := fs.Float64("impact", 0,
 		"market impact coefficient; 1 is the usual estimate, 0 disables the model")
 	warmupFlag := fs.Int("warmup", 0, "bars of history to load before the start date")
 	// Separate the prompt from the flags before parsing. Go's flag package
 	// stops at the first positional argument, so without this a command like
-	//   natural-quant run "buy SPY" --from 2020-01-01
+	//   pyrite run "buy SPY" --from 2020-01-01
 	// would silently ignore every flag and fold them into the prompt.
 	prompt, flagArgs := splitPromptAndFlags(args)
 	if err := fs.Parse(flagArgs); err != nil {
@@ -226,10 +226,10 @@ func cmdRun(args []string) error {
 	prompt = strings.TrimSpace(strings.Join(append([]string{prompt}, fs.Args()...), " "))
 	if prompt == "" && *codeFile == "" && *example == "" {
 		return fmt.Errorf("describe a strategy, for example:\n" +
-			"  natural-quant run \"buy SPY when the 50 day average crosses above the 200 day\"\n\n" +
+			"  pyrite run \"buy SPY when the 50 day average crosses above the 200 day\"\n\n" +
 			"No API key yet? Try a bundled one instead — it needs nothing:\n" +
-			"  natural-quant run --example golden-cross\n" +
-			"  natural-quant examples")
+			"  pyrite run --example golden-cross\n" +
+			"  pyrite examples")
 	}
 
 	a, err := newApp(fs, offline)
@@ -239,12 +239,12 @@ func cmdRun(args []string) error {
 	if *codeFile == "" && *example == "" && !a.Cfg.AnyProviderEnabled() {
 		return fmt.Errorf("compiling plain English needs a model, and none is configured.\n\n" +
 			"  Try a bundled strategy instead — it needs nothing:\n" +
-			"    natural-quant run --example golden-cross\n" +
-			"    natural-quant examples\n\n" +
+			"    pyrite run --example golden-cross\n" +
+			"    pyrite examples\n\n" +
 			"  Or turn compilation on:\n" +
 			"    free   — install Ollama, then: ollama pull qwen2.5-coder:7b\n" +
 			"    hosted — export OPENAI_API_KEY, CEREBRAS_API_KEY or KIMI_API_KEY\n" +
-			"    then:    natural-quant doctor")
+			"    then:    pyrite doctor")
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -306,7 +306,7 @@ func cmdRun(args []string) error {
 			return fmt.Errorf("the %q example calls a model inside the backtest, so it needs one.\n"+
 				"  free   — install Ollama, then: ollama pull qwen2.5-coder:7b\n"+
 				"  hosted — export OPENAI_API_KEY, CEREBRAS_API_KEY or KIMI_API_KEY\n"+
-				"Every other example runs with nothing: natural-quant examples", ex.Name)
+				"Every other example runs with nothing: pyrite examples", ex.Name)
 		}
 	} else if *codeFile != "" {
 		code, err := os.ReadFile(*codeFile)
@@ -429,7 +429,7 @@ func printReport(plan *strategy.Plan, res *engine.Result) {
 
 	if len(res.Benchmarks) > 0 {
 		fmt.Printf("\n  %-22s %14s %14s\n", "Comparison", "Total return", "Max drawdown")
-		fmt.Printf("  %-22s %14s %14s\n", plan.Name, pct(m.TotalReturn), pct(m.MaxDrawdown))
+		fmt.Printf("  %-22s %14s %14s\n", truncate(plan.Name, 22), pct(m.TotalReturn), pct(m.MaxDrawdown))
 		for _, b := range res.Benchmarks {
 			fmt.Printf("  %-22s %14s %14s\n", truncate(b.Label, 22), pct(b.Metric.TotalReturn), pct(b.Metric.MaxDrawdown))
 		}
@@ -497,7 +497,7 @@ func cmdDoctor(args []string) error {
 		return enc.Encode(h)
 	}
 
-	fmt.Printf("natural-quant %s\n\n", version)
+	fmt.Printf("pyrite %s\n\n", version)
 	fmt.Printf("data provider      %s\n", h.DataProvider)
 	fmt.Printf("offline mode       %v\n", h.OfflineMode)
 	fmt.Printf("web search         %v\n", h.SearchOK)
@@ -545,7 +545,7 @@ func cmdDoctor(args []string) error {
 		fmt.Printf("  ✗ compiling plain English into a strategy\n")
 		fmt.Printf("\n  To turn the last one on, either:\n")
 		fmt.Printf("    free   — install Ollama and run:  ollama pull qwen2.5-coder:7b\n")
-		fmt.Printf("             natural-quant finds it automatically on 127.0.0.1:11434\n")
+		fmt.Printf("             pyrite finds it automatically on 127.0.0.1:11434\n")
 		fmt.Printf("    hosted — export OPENAI_API_KEY, CEREBRAS_API_KEY or KIMI_API_KEY\n")
 	}
 	if h.OfflineMode {
@@ -798,7 +798,7 @@ func printSymbols(res *engine.Result) {
 // cmdIngest builds reference data tables from public sources.
 func cmdIngest(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: natural-quant ingest edgar [flags]")
+		return fmt.Errorf("usage: pyrite ingest edgar [flags]")
 	}
 	switch args[0] {
 	case "edgar":
@@ -816,8 +816,8 @@ func cmdIngestEDGAR(args []string) error {
 	symbols := fs.String("symbols", "", "comma-separated tickers to ingest")
 	universe := fs.String("universe", "", "a named universe to ingest (megacap, tech, dow, ...)")
 	out := fs.String("out", "", "write here instead of stdout")
-	agent := fs.String("user-agent", os.Getenv("NQ_SEC_USER_AGENT"),
-		"identify yourself to the SEC, e.g. \"Jane Doe jane@example.com\" (or set NQ_SEC_USER_AGENT)")
+	agent := fs.String("user-agent", os.Getenv("PYRITE_SEC_USER_AGENT"),
+		"identify yourself to the SEC, e.g. \"Jane Doe jane@example.com\" (or set PYRITE_SEC_USER_AGENT)")
 	threshold := fs.Float64("threshold", 0.005,
 		"drop a filing whose share count moved less than this fraction from the last kept row")
 	if err := fs.Parse(args); err != nil {
@@ -840,7 +840,7 @@ func cmdIngestEDGAR(args []string) error {
 	}
 	if strings.TrimSpace(*agent) == "" {
 		return fmt.Errorf("the SEC requires a User-Agent identifying you.\n" +
-			"  Pass --user-agent \"Your Name you@example.com\" or set NQ_SEC_USER_AGENT.\n" +
+			"  Pass --user-agent \"Your Name you@example.com\" or set PYRITE_SEC_USER_AGENT.\n" +
 			"  Requests without one are refused, and a generic string risks a block.")
 	}
 
@@ -890,7 +890,7 @@ func cmdIngestEDGAR(args []string) error {
 		}
 	}
 	if *out != "" {
-		fmt.Fprintf(os.Stderr, "\nTo use it, copy to $NQ_DATA_DIR/shares_outstanding.csv,\n"+
+		fmt.Fprintf(os.Stderr, "\nTo use it, copy to $PYRITE_DATA_DIR/shares_outstanding.csv,\n"+
 			"or replace internal/market/assets/shares_outstanding.csv and rebuild.\n")
 	}
 	return nil
@@ -921,7 +921,7 @@ func cmdIngestIndex(args []string) error {
 	fs := flag.NewFlagSet("ingest index", flag.ContinueOnError)
 	index := fs.String("index", "sp500", "which index to rebuild")
 	out := fs.String("out", "", "write here instead of stdout")
-	agent := fs.String("user-agent", os.Getenv("NQ_WIKI_USER_AGENT"),
+	agent := fs.String("user-agent", os.Getenv("PYRITE_WIKI_USER_AGENT"),
 		"identify yourself to Wikipedia (optional but polite)")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -982,7 +982,7 @@ func cmdExamples(args []string) error {
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	// `natural-quant examples golden-cross` should do the obvious thing.
+	// `pyrite examples golden-cross` should do the obvious thing.
 	if *show == "" && len(fs.Args()) > 0 {
 		*show = fs.Arg(0)
 	}
@@ -1013,9 +1013,9 @@ func cmdExamples(args []string) error {
 		}
 		fmt.Println()
 	}
-	fmt.Printf("Run one          natural-quant run --example golden-cross\n")
-	fmt.Printf("Read the code    natural-quant examples golden-cross\n")
-	fmt.Printf("Search its space natural-quant sweep --example golden-cross\n")
-	fmt.Printf("Full report      natural-quant report --example golden-cross --out report.md\n")
+	fmt.Printf("Run one          pyrite run --example golden-cross\n")
+	fmt.Printf("Read the code    pyrite examples golden-cross\n")
+	fmt.Printf("Search its space pyrite sweep --example golden-cross\n")
+	fmt.Printf("Full report      pyrite report --example golden-cross --out report.md\n")
 	return nil
 }

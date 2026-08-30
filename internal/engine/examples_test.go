@@ -5,9 +5,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/charbelkassab/natural-quant/examples"
-	"github.com/charbelkassab/natural-quant/internal/engine"
-	"github.com/charbelkassab/natural-quant/internal/market"
+	"github.com/charbelkassab/pyrite/examples"
+	"github.com/charbelkassab/pyrite/internal/engine"
+	"github.com/charbelkassab/pyrite/internal/market"
 )
 
 // The bundled example strategies are hand-written against the documented API,
@@ -18,7 +18,7 @@ import (
 //
 // Each example declares its own universe and warm-up in header directives, so
 // this test reads them from the file rather than repeating them here. That is
-// the same path `natural-quant run --example` takes, which means a directive
+// the same path `pyrite run --example` takes, which means a directive
 // that is wrong fails here rather than in a user's terminal.
 func TestBundledExamplesRun(t *testing.T) {
 	fund, err := market.LoadFundamentals("")

@@ -1,6 +1,6 @@
-# natural-quant Strategy API
+# pyrite Strategy API
 
-A strategy is a small JavaScript program. natural-quant calls it once for
+A strategy is a small JavaScript program. pyrite calls it once for
 every trading day, in order, from the start of the backtest to the end.
 
 ```js
@@ -437,8 +437,8 @@ The declared values are read back through `ctx.params.<name>`, so the two
 spellings always agree.
 
 **Why bother.** A number written inline can only ever be tested at the value it
-was written at. Declaring it is what lets `natural-quant sweep` search the
-space and `natural-quant walkforward` choose on one period and report on
+was written at. Declaring it is what lets `pyrite sweep` search the
+space and `pyrite walkforward` choose on one period and report on
 another — which is the difference between knowing an idea works and knowing
 that one number fitted one sample.
 

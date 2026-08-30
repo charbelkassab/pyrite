@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/charbelkassab/natural-quant/internal/market"
+	"github.com/charbelkassab/pyrite/internal/market"
 	"github.com/dop251/goja"
 )
 

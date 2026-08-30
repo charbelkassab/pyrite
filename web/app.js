@@ -1,4 +1,4 @@
-/* natural-quant front end.
+/* pyrite front end.
  *
  * Everything on screen derives from a list of "views". A view is one thing you
  * want on the chart: a strategy, or a ticker/index. Views own their colour,

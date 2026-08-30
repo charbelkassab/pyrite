@@ -213,7 +213,7 @@ type WikipediaIndex struct {
 // NewWikipediaIndex builds a client.
 func NewWikipediaIndex(userAgent string) *WikipediaIndex {
 	if userAgent == "" {
-		userAgent = "natural-quant (github.com/charbelkassab/natural-quant)"
+		userAgent = "pyrite (github.com/charbelkassab/pyrite)"
 	}
 	return &WikipediaIndex{
 		HTTP:      &http.Client{Timeout: 60 * time.Second},
@@ -510,8 +510,8 @@ func BuildMembership(current map[string]Day, changes []IndexChange) []Tenure {
 
 // WriteMembershipCSV renders tenures in the format LoadMembership reads.
 func WriteMembershipCSV(w io.Writer, index string, tenures []Tenure, changes int) error {
-	fmt.Fprintf(w, "# natural-quant — point-in-time %s membership\n#\n", strings.ToUpper(index))
-	fmt.Fprintf(w, "# Generated %s by `natural-quant ingest index`.\n", time.Now().UTC().Format("2006-01-02"))
+	fmt.Fprintf(w, "# pyrite — point-in-time %s membership\n#\n", strings.ToUpper(index))
+	fmt.Fprintf(w, "# Generated %s by `pyrite ingest index`.\n", time.Now().UTC().Format("2006-01-02"))
 	fmt.Fprintf(w, "# Reconstructed from the current constituent list and %d recorded\n", changes)
 	fmt.Fprintf(w, "# add/remove events, by undoing each change in reverse from today.\n#\n")
 	fmt.Fprintf(w, "# WHY THIS FILE EXISTS\n")
@@ -525,7 +525,7 @@ func WriteMembershipCSV(w io.Writer, index string, tenures []Tenure, changes int
 	fmt.Fprintf(w, "#    you go.\n")
 	fmt.Fprintf(w, "#  * Membership is only half the problem. Backtesting a dropped name also\n")
 	fmt.Fprintf(w, "#    needs its prices, and free vendors do not serve delisted securities.\n")
-	fmt.Fprintf(w, "#    Point NQ_CSV_DIR at your own data for those.\n")
+	fmt.Fprintf(w, "#    Point PYRITE_CSV_DIR at your own data for those.\n")
 	fmt.Fprintf(w, "#  * A symbol that left and rejoined has several rows.\n#\n")
 	fmt.Fprintf(w, "# format: symbol,from,to   (an empty `to` means still a member)\n")
 	fmt.Fprintf(w, "symbol,from,to\n")

@@ -1,20 +1,20 @@
-# natural-quant (Python)
+# pyrite (Python)
 
-A client for [natural-quant](https://github.com/charbelkassab/natural-quant).
+A client for [pyrite](https://github.com/charbelkassab/pyrite).
 The Go binary does the work; this package turns its JSON into Python objects,
 so a notebook drives the same engine as the CLI and the web interface and the
 two can never disagree about what a backtest means.
 
 ```bash
-pip install natural-quant          # the client
+pip install pyrite          # the client
 # and the binary itself:
-go install github.com/charbelkassab/natural-quant/cmd/natural-quant@latest
+go install github.com/charbelkassab/pyrite/cmd/pyrite@latest
 ```
 
 ## Usage
 
 ```python
-from natural_quant import Client
+from pyrite import Client
 
 with Client.serve(offline=True) as nq:          # starts and stops a server
     run = nq.backtest(code=open("strategy.js").read(),
@@ -60,7 +60,7 @@ of dicts when it is not. Nothing in the package requires it, so it is usable
 from a plain interpreter and better in a notebook.
 
 ```python
-from natural_quant.frames import has_pandas
+from pyrite.frames import has_pandas
 ```
 
 ## Everything is still there
@@ -79,6 +79,6 @@ They start a real server in offline mode rather than mocking one, because a
 mock would happily agree with a wrong assumption about what the API returns.
 
 ```bash
-go build -o /tmp/natural-quant ./cmd/natural-quant
-NQ_BINARY=/tmp/natural-quant python3 python/tests/test_client.py
+go build -o /tmp/pyrite ./cmd/pyrite
+PYRITE_BINARY=/tmp/pyrite python3 python/tests/test_client.py
 ```

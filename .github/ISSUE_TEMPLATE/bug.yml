@@ -1,0 +1,46 @@
+name: Bug report
+description: Something behaves differently from what the docs say
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. The most useful bug reports here are ones with a
+        strategy that reproduces the problem — most of this project is a
+        simulation, so a few lines of JavaScript usually pins it exactly.
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: And what you expected instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: How to reproduce
+      description: >
+        Ideally the exact command. `--offline` makes it deterministic and
+        removes the network from the picture, so if it reproduces there, say so.
+      placeholder: |
+        pyrite run --code-file strategy.js --offline --universe SPY --from 2020-01-01
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: strategy
+    attributes:
+      label: The strategy, if one is involved
+      render: javascript
+
+  - type: textarea
+    id: doctor
+    attributes:
+      label: Output of `pyrite doctor`
+      description: It reports the data source, provider routing and versions.
+      render: text
+    validations:
+      required: true

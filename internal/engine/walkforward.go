@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"math"
 
-	"github.com/charbelkassab/natural-quant/internal/market"
+	"github.com/charbelkassab/pyrite/internal/market"
 )
 
 // WalkForwardSpec describes a rolling out-of-sample evaluation.

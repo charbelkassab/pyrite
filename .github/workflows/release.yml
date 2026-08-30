@@ -1,0 +1,65 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to build (for a dry run)'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and publish binaries
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # so `git describe` gives a real version
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+          check-latest: true
+
+      # Never ship a binary whose tests did not pass.
+      - name: Test
+        run: go test ./...
+
+      - name: Build every target
+        run: make dist
+
+      - name: Checksums
+        run: |
+          cd dist
+          sha256sum * > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Publish
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-rc') || contains(github.ref_name, '-beta') }}
+          body: |
+            ## Install
+
+            Download the binary for your platform below, or:
+
+            ```bash
+            go install github.com/charbelkassab/pyrite/cmd/pyrite@${{ github.ref_name }}
+            ```
+
+            Then, with nothing else installed and no API key:
+
+            ```bash
+            pyrite run --example golden-cross
+            pyrite serve --offline --open
+            ```
+
+            Verify a download against `SHA256SUMS`.

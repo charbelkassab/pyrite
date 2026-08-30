@@ -1,4 +1,4 @@
-// Package web embeds the natural-quant front end so the binary ships as a
+// Package web embeds the pyrite front end so the binary ships as a
 // single self-contained file with no runtime asset dependencies.
 package web
 

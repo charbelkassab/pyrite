@@ -43,6 +43,27 @@ func NewDiskCache(dir string) (*DiskCache, error) {
 	return &DiskCache{dir: dir, TTL: 6 * time.Hour}, nil
 }
 
+// SafeProviderDir maps a provider name to a filesystem-safe directory.
+//
+// A chain reports itself as "yahoo+stooq", and the separator is not a legal
+// path character everywhere, so it is normalised here rather than at each
+// call site.
+func SafeProviderDir(name string) string {
+	if name == "" {
+		return "unknown"
+	}
+	var b strings.Builder
+	for _, r := range strings.ToLower(name) {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
+			b.WriteRune(r)
+		default:
+			b.WriteByte('-')
+		}
+	}
+	return b.String()
+}
+
 // safeName maps a ticker to a filesystem-safe file name. Tickers contain
 // characters like ^ = - . / which are either illegal or awkward in paths.
 func safeName(symbol string) string {

@@ -352,9 +352,9 @@ func (e *EDGAR) BuildSharesTable(ctx context.Context, symbols []string, threshol
 		return rows[i].obs.Filed < rows[j].obs.Filed
 	})
 
-	fmt.Fprintf(w, "# natural-quant — point-in-time shares outstanding, from SEC EDGAR XBRL\n")
+	fmt.Fprintf(w, "# pyrite — point-in-time shares outstanding, from SEC EDGAR XBRL\n")
 	fmt.Fprintf(w, "#\n")
-	fmt.Fprintf(w, "# Generated %s by `natural-quant ingest edgar`.\n", rep.Generated.Format("2006-01-02"))
+	fmt.Fprintf(w, "# Generated %s by `pyrite ingest edgar`.\n", rep.Generated.Format("2006-01-02"))
 	fmt.Fprintf(w, "# Source: https://data.sec.gov/api/xbrl/companyconcept/...\n")
 	fmt.Fprintf(w, "#\n")
 	fmt.Fprintf(w, "# Each row's date is the date the filing was PUBLISHED, not the date the\n")

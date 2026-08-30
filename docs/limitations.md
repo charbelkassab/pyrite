@@ -1,11 +1,11 @@
-# What natural-quant cannot tell you
+# What pyrite cannot tell you
 
 Every backtesting tool flatters its results. This page is the honest accounting
 of how, so that you can discount what you see by roughly the right amount.
 
 ## What a parameter search does and does not tell you
 
-`natural-quant sweep` exists because a single backtest is one point in a space,
+`pyrite sweep` exists because a single backtest is one point in a space,
 and the number it reports is a joint fact about the idea and the particular
 parameters someone typed. Searching that space is the only way to separate the
 two — and it introduces its own failure mode, which the tool reports rather than
@@ -55,7 +55,7 @@ to fail, and your results would have been worse — often much worse.
 recorded index membership, not from today's list:
 
 ```bash
-natural-quant run "each month hold the 20 strongest S&P 500 names" --universe sp500
+pyrite run "each month hold the 20 strongest S&P 500 names" --universe sp500
 ```
 
 The bundled table
@@ -65,7 +65,7 @@ from Wikipedia's current-components list and its 407 recorded add/remove events
 by undoing each change in reverse from today. Rebuild it with:
 
 ```bash
-natural-quant ingest index --index sp500
+pyrite ingest index --index sp500
 ```
 
 What that changes in practice: a 2022 run can select Silicon Valley Bank,
@@ -83,7 +83,7 @@ direction, Tesla is invisible before December 2020 and Nvidia before November
 - **Membership is only half the problem.** Backtesting a dropped name also needs
   its prices, and free vendors do not serve delisted securities — a symbol that
   stopped trading resolves to a per-symbol data error rather than a position.
-  Point `NQ_CSV_DIR` at your own data for those; it is the one source that can
+  Point `PYRITE_CSV_DIR` at your own data for those; it is the one source that can
   hold them.
 - Only the S&P 500 has a table so far.
 
@@ -103,7 +103,7 @@ generated from it — 8,473 rows across 290 symbols, each citing the accession
 number of the filing it came from. Rebuild or extend it with:
 
 ```bash
-natural-quant ingest edgar --universe megacap \
+pyrite ingest edgar --universe megacap \
     --user-agent "Your Name you@example.com"
 ```
 
@@ -147,7 +147,7 @@ reading a summary of what already happened.
 after your simulated date. Ask it "is the outlook for this company positive?" in a
 2020 backtest and it answers with knowledge of 2021–2026.
 
-natural-quant does not prevent this — it cannot. What it does instead:
+pyrite does not prevent this — it cannot. What it does instead:
 
 - Records every model and web call against the day it was made, visible in the
   day-detail panel, so you can see exactly what the strategy was told.
@@ -170,10 +170,10 @@ conclusions from a run that used them.
 Two related sharp edges worth knowing:
 
 - The model serving in-strategy calls reasons before it answers, so a very
-  small token budget produces an empty reply. natural-quant applies a floor and
+  small token budget produces an empty reply. pyrite applies a floor and
   retries with a larger budget, but a strategy that overrides `maxTokens` down
   to single digits is still asking for trouble.
-- There is a per-run cap on model and web calls (`NQ_MAX_AI_CALLS`, 2000 by
+- There is a per-run cap on model and web calls (`PYRITE_MAX_AI_CALLS`, 2000 by
   default). Past it, `ctx.ai()` returns `null` and a warning is recorded. A
   daily AI strategy over ten years will hit this.
 

@@ -207,3 +207,35 @@ func TestCritiqueHandlesEmptyResult(t *testing.T) {
 		t.Error("an empty result should produce nothing rather than panic")
 	}
 }
+
+func TestConcentrationIsReportedOnce(t *testing.T) {
+	// Both stress tests fire on the same underlying fact. Two findings with
+	// identical titles read as a bug, not as emphasis.
+	res := &Result{
+		Spec:       Spec{Fill: FillNextOpen, Costs: DefaultCosts()},
+		Curve:      curveOf(100, 200),
+		Metrics:    Metrics{TradingDays: 2, Years: 5, TotalReturn: 1.0},
+		TradeStats: TradeStats{Closed: 50},
+		Attribution: Attribution{Stress: []StressResult{
+			{Label: "excluding the best month", Return: 0.2, ShareOfTotal: 0.76},
+			{Label: "excluding the 5 best days", Return: 0.1, ShareOfTotal: 0.91},
+		}},
+	}
+	c := Criticise(res)
+
+	var n int
+	var detail string
+	for _, f := range c.Findings {
+		if strings.Contains(f.Title, "concentrated") {
+			n++
+			detail = f.Detail
+		}
+	}
+	if n != 1 {
+		t.Fatalf("concentration should be reported once, got %d", n)
+	}
+	// And it should report the worst of the two, not whichever came first.
+	if !strings.Contains(detail, "91%") {
+		t.Errorf("the strongest concentration should be the one reported: %q", detail)
+	}
+}

@@ -15,11 +15,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/charbelkassab/natural-quant/examples"
-	"github.com/charbelkassab/natural-quant/internal/app"
-	"github.com/charbelkassab/natural-quant/internal/engine"
-	"github.com/charbelkassab/natural-quant/internal/market"
-	"github.com/charbelkassab/natural-quant/internal/strategy"
+	"github.com/charbelkassab/pyrite/examples"
+	"github.com/charbelkassab/pyrite/internal/app"
+	"github.com/charbelkassab/pyrite/internal/engine"
+	"github.com/charbelkassab/pyrite/internal/market"
+	"github.com/charbelkassab/pyrite/internal/strategy"
 )
 
 // searchSetup is the shared front half of `sweep` and `walkforward`: parse the
@@ -64,7 +64,7 @@ func addCodeFileFlags(fs *flag.FlagSet) (codeFile *string, warmup *int, example 
 		"run this JavaScript strategy instead of compiling a prompt")
 	warmup = fs.Int("warmup", 0, "bars of history to load before the start date")
 	example = fs.String("example", "",
-		"search a bundled example; `natural-quant examples` lists them")
+		"search a bundled example; `pyrite examples` lists them")
 	return
 }
 
@@ -120,7 +120,7 @@ func cmdSweep(args []string) error {
 	prompt = strings.TrimSpace(strings.Join(append([]string{prompt}, fs.Args()...), " "))
 	if prompt == "" && *codeFile == "" && *example == "" {
 		return fmt.Errorf("describe a strategy, for example:\n" +
-			"  natural-quant sweep \"buy SPY when the fast average crosses the slow one\"\n" +
+			"  pyrite sweep \"buy SPY when the fast average crosses the slow one\"\n" +
 			"  or --code-file strategy.js, or --example golden-cross")
 	}
 
@@ -182,7 +182,7 @@ func cmdWalkForward(args []string) error {
 	prompt = strings.TrimSpace(strings.Join(append([]string{prompt}, fs.Args()...), " "))
 	if prompt == "" && *codeFile == "" && *example == "" {
 		return fmt.Errorf("describe a strategy, for example:\n" +
-			"  natural-quant walkforward \"momentum rotation over the top 3 tech names\"\n" +
+			"  pyrite walkforward \"momentum rotation over the top 3 tech names\"\n" +
 			"  or --code-file strategy.js, or --example golden-cross")
 	}
 
@@ -313,7 +313,7 @@ func prepareSearch(fs *flag.FlagSet, prompt string, o searchOpts) (*searchSetup,
 		stop()
 		return nil, fmt.Errorf("compiling plain English needs a model, and none is configured.\n\n" +
 			"  Search a bundled strategy instead — it needs nothing:\n" +
-			"    natural-quant sweep --example golden-cross\n\n" +
+			"    pyrite sweep --example golden-cross\n\n" +
 			"  Or turn compilation on:\n" +
 			"    free   — install Ollama, then: ollama pull qwen2.5-coder:7b\n" +
 			"    hosted — export OPENAI_API_KEY, CEREBRAS_API_KEY or KIMI_API_KEY")
@@ -624,7 +624,7 @@ func cmdImprove(args []string) error {
 	prompt = strings.TrimSpace(strings.Join(append([]string{prompt}, fs.Args()...), " "))
 	if prompt == "" && *codeFile == "" && *example == "" {
 		return fmt.Errorf("describe a strategy to improve, for example:\n" +
-			"  natural-quant improve \"a golden cross on SPY\"\n" +
+			"  pyrite improve \"a golden cross on SPY\"\n" +
 			"  or --code-file strategy.js, or --example golden-cross")
 	}
 	_ = csvPath

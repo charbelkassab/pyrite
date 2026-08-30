@@ -1,6 +1,6 @@
 # Data sources
 
-natural-quant is designed to run with no API keys for market data, so a clone
+pyrite is designed to run with no API keys for market data, so a clone
 works immediately. This page explains what it uses, why, and how to substitute
 something better.
 
@@ -25,12 +25,12 @@ proof-of-work challenge, so it cannot be used from a plain HTTP client.
 
 ### Caching
 
-Every fetched series is cached to `$NQ_DATA_DIR/market-cache/` as JSON, one file
+Every fetched series is cached to `$PYRITE_DATA_DIR/market-cache/` as JSON, one file
 per symbol. The store always fetches a wider window than requested, so repeated
 backtests over overlapping periods hit the cache. Clear it with:
 
 ```bash
-natural-quant cache clear
+pyrite cache clear
 ```
 
 ## Fundamentals — bundled share counts
@@ -39,7 +39,7 @@ Market-cap ranking needs point-in-time shares outstanding. Yahoo's fundamentals
 endpoints (`quoteSummary`, `v7/quote`) now return **HTTP 401**, and no other free
 keyless source provides a historical series.
 
-natural-quant therefore ships
+pyrite therefore ships
 [`internal/market/assets/shares_outstanding.csv`](../internal/market/assets/shares_outstanding.csv):
 a piecewise-constant table of share counts for US large caps, with step changes at
 splits and gradual drift from buybacks.
@@ -60,14 +60,14 @@ caveats. They are significant.
 
 ### Replacing it with your own data
 
-Drop a file at `$NQ_DATA_DIR/shares_outstanding.csv` in the same format. It
+Drop a file at `$PYRITE_DATA_DIR/shares_outstanding.csv` in the same format. It
 replaces the bundled table wholesale rather than merging, so results stay
 explainable. Comment lines beginning with `#` are allowed.
 
 ```bash
-mkdir -p ~/.natural-quant
-cp my-fundamentals.csv ~/.natural-quant/shares_outstanding.csv
-natural-quant doctor      # "fundamentals" will show your file's path
+mkdir -p ~/.pyrite
+cp my-fundamentals.csv ~/.pyrite/shares_outstanding.csv
+pyrite doctor      # "fundamentals" will show your file's path
 ```
 
 ### Using a commercial vendor
@@ -104,7 +104,7 @@ That is lookahead bias and it is unavoidable with any live search backend. See
 Disable search entirely with:
 
 ```bash
-export NQ_SEARCH_PROVIDER=none
+export PYRITE_SEARCH_PROVIDER=none
 ```
 
 ## Offline and synthetic data
@@ -118,6 +118,6 @@ be developed, demoed and tested with no network and no keys. Numbers produced in
 offline mode are meaningless as research; they are for exercising the machinery.
 
 ```bash
-natural-quant serve --offline
+pyrite serve --offline
 go test ./...              # always offline
 ```

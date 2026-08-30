@@ -12,7 +12,7 @@ function setup(ctx) {
   ctx.universe(["SPY"]);
 
   // Every number this strategy depends on is declared rather than written
-  // inline, so `natural-quant sweep --example golden-cross` can search the
+  // inline, so `pyrite sweep --example golden-cross` can search the
   // space around it instead of testing the one point someone happened to pick.
   ctx.param("fast", 50, { grid: [20, 35, 50, 65, 80] });
   ctx.param("slow", 200, { grid: [100, 150, 200, 250] });

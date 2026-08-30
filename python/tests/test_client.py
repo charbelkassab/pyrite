@@ -1,4 +1,4 @@
-"""End-to-end tests against a real natural-quant binary.
+"""End-to-end tests against a real pyrite binary.
 
 These start an actual server in offline mode, so they exercise the whole path
 — HTTP, JSON shapes, result parsing — rather than a mock that would happily
@@ -11,8 +11,8 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from natural_quant import Client, RunFailed, ServerUnavailable  # noqa: E402
-from natural_quant.frames import has_pandas  # noqa: E402
+from pyrite import Client, RunFailed, ServerUnavailable  # noqa: E402
+from pyrite.frames import has_pandas  # noqa: E402
 
 CROSS = """
 function setup(ctx) {
@@ -156,7 +156,7 @@ class UnreachableServerTest(unittest.TestCase):
         nq = Client("http://127.0.0.1:1", timeout=2)
         with self.assertRaises(ServerUnavailable) as cm:
             nq.health()
-        self.assertIn("natural-quant serve", str(cm.exception))
+        self.assertIn("pyrite serve", str(cm.exception))
 
 
 if __name__ == "__main__":

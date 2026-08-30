@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/charbelkassab/natural-quant/internal/market"
+	"github.com/charbelkassab/pyrite/internal/market"
 )
 
 // The point of these tests is the wall, not the search. A proposer that could

@@ -1,4 +1,4 @@
-// Package server exposes natural-quant over HTTP: a JSON API, a server-sent
+// Package server exposes pyrite over HTTP: a JSON API, a server-sent
 // event stream for run progress, and the embedded single-page front end.
 package server
 
@@ -16,11 +16,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/charbelkassab/natural-quant/internal/app"
-	"github.com/charbelkassab/natural-quant/internal/engine"
-	"github.com/charbelkassab/natural-quant/internal/market"
-	"github.com/charbelkassab/natural-quant/internal/strategy"
-	webassets "github.com/charbelkassab/natural-quant/web"
+	"github.com/charbelkassab/pyrite/internal/app"
+	"github.com/charbelkassab/pyrite/internal/engine"
+	"github.com/charbelkassab/pyrite/internal/market"
+	"github.com/charbelkassab/pyrite/internal/strategy"
+	webassets "github.com/charbelkassab/pyrite/web"
 )
 
 // Server serves the API and the front end.

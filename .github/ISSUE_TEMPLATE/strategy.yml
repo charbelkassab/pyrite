@@ -1,0 +1,41 @@
+name: A strategy pyrite cannot express
+description: You described something in plain English and got the wrong code, or none
+labels: [corpus]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This is the most valuable issue you can open.
+
+        The strategy API grows from cases it cannot handle. A prompt that
+        compiles to the wrong thing tells us exactly where the API or the
+        compiler prompt is short, and the fix usually helps every strategy of
+        that shape rather than only yours.
+
+  - type: textarea
+    id: prompt
+    attributes:
+      label: What you asked for
+      description: The sentence you typed, exactly.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What it should have done
+      description: In words. Pseudocode is fine. Working JavaScript is a gift.
+    validations:
+      required: true
+
+  - type: textarea
+    id: got
+    attributes:
+      label: What it produced
+      render: javascript
+
+  - type: input
+    id: model
+    attributes:
+      label: Which model compiled it
+      placeholder: openai/gpt-5.5, or ollama/qwen2.5-coder:7b

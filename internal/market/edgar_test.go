@@ -70,7 +70,7 @@ func edgarServer(t *testing.T) *httptest.Server {
 }
 
 func testEDGAR(t *testing.T, srv *httptest.Server) *EDGAR {
-	e := NewEDGAR("natural-quant test suite test@example.com")
+	e := NewEDGAR("pyrite test suite test@example.com")
 	e.DataURL = srv.URL
 	e.WWWURL = srv.URL
 	e.MinInterval = 0 // no throttling against a local server

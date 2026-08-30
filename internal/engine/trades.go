@@ -4,7 +4,7 @@ import (
 	"math"
 	"sort"
 
-	"github.com/charbelkassab/natural-quant/internal/market"
+	"github.com/charbelkassab/pyrite/internal/market"
 )
 
 // Direction is which way a round trip was taken.

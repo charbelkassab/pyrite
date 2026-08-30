@@ -4,7 +4,7 @@
 // with a copy of them. Two copies would drift, and examples/ at the repository
 // root is where anyone browsing on GitHub looks first.
 //
-// Embedding is what makes `natural-quant run --example golden-cross` work from
+// Embedding is what makes `pyrite run --example golden-cross` work from
 // a downloaded binary with nothing checked out, no API key and nothing else
 // installed. That is the shortest path from finding the project to seeing a
 // real result on real data, and it is worth a few kilobytes.

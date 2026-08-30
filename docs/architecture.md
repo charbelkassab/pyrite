@@ -1,13 +1,13 @@
 # Architecture
 
-natural-quant is one Go binary with an embedded single-page front end. This is a
+pyrite is one Go binary with an embedded single-page front end. This is a
 tour of how a sentence becomes an equity curve, and why each piece works the way
 it does.
 
 ## Packages
 
 ```
-cmd/natural-quant      CLI and server entry point
+cmd/pyrite      CLI and server entry point
 internal/
   config               env + file configuration, tier routing
   llm                  one OpenAI-compatible client for all three providers

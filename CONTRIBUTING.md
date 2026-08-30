@@ -1,4 +1,4 @@
-# Contributing to natural-quant
+# Contributing to pyrite
 
 Thanks for looking. This is a small, focused project and contributions are very
 welcome.
@@ -9,7 +9,7 @@ In rough order of how much they help:
 
 ### 1. A prompt that does not work
 
-This is the big one. natural-quant's job is to turn *any* reasonable trading idea
+This is the big one. pyrite's job is to turn *any* reasonable trading idea
 into a working strategy, and the only way to know where it falls short is for
 people to try things it has not seen.
 
@@ -36,10 +36,10 @@ silently discarded the order. Both are now permanent tests.
 Run it with:
 
 ```bash
-NQ_LIVE_TESTS=1 go test ./internal/strategy/ -run TestPromptCorpus -v -timeout 60m
+PYRITE_LIVE_TESTS=1 go test ./internal/strategy/ -run TestPromptCorpus -v -timeout 60m
 
 # just one family or case
-NQ_CORPUS_FILTER=pairs NQ_LIVE_TESTS=1 go test ./internal/strategy/ -run TestPromptCorpus -v
+PYRITE_CORPUS_FILTER=pairs PYRITE_LIVE_TESTS=1 go test ./internal/strategy/ -run TestPromptCorpus -v
 ```
 
 It uses real API calls, so it is opt-in and never runs in normal `go test ./...`.
@@ -73,11 +73,11 @@ useful. See [docs/data-sources.md](docs/data-sources.md).
 ## Getting set up
 
 ```bash
-git clone https://github.com/charbelkassab/natural-quant
-cd natural-quant
+git clone https://github.com/charbelkassab/pyrite
+cd pyrite
 go test ./...                          # no network or API keys needed
-go build -o natural-quant ./cmd/natural-quant
-./natural-quant serve --dev ./web      # live front-end editing
+go build -o pyrite ./cmd/pyrite
+./pyrite serve --dev ./web      # live front-end editing
 ```
 
 The front end is embedded with `go:embed`. In a normal build, editing `web/app.js`

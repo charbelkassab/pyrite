@@ -1,6 +1,6 @@
-# natural-quant — point-in-time SP500 membership
+# pyrite — point-in-time SP500 membership
 #
-# Generated 2026-08-30 by `natural-quant ingest index`.
+# Generated 2026-08-30 by `pyrite ingest index`.
 # Reconstructed from the current constituent list and 407 recorded
 # add/remove events, by undoing each change in reverse from today.
 #
@@ -16,7 +16,7 @@
 #    you go.
 #  * Membership is only half the problem. Backtesting a dropped name also
 #    needs its prices, and free vendors do not serve delisted securities.
-#    Point NQ_CSV_DIR at your own data for those.
+#    Point PYRITE_CSV_DIR at your own data for those.
 #  * A symbol that left and rejoined has several rows.
 #
 # format: symbol,from,to   (an empty `to` means still a member)

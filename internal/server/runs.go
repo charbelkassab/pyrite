@@ -11,9 +11,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/charbelkassab/natural-quant/internal/engine"
-	"github.com/charbelkassab/natural-quant/internal/market"
-	"github.com/charbelkassab/natural-quant/internal/strategy"
+	"github.com/charbelkassab/pyrite/internal/engine"
+	"github.com/charbelkassab/pyrite/internal/market"
+	"github.com/charbelkassab/pyrite/internal/strategy"
 )
 
 // RunStatus is the lifecycle state of a backtest.

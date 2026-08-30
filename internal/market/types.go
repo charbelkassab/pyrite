@@ -17,7 +17,7 @@ import (
 // meaningful intraday component.
 type Day string
 
-// Layout is the canonical date layout used throughout natural-quant.
+// Layout is the canonical date layout used throughout pyrite.
 const Layout = "2006-01-02"
 
 // NewDay converts a time.Time to a Day in UTC.

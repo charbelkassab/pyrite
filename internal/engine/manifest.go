@@ -7,7 +7,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/charbelkassab/natural-quant/internal/market"
+	"github.com/charbelkassab/pyrite/internal/market"
 )
 
 // Version is the build identity of the binary, set from main at startup so

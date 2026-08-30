@@ -1,4 +1,4 @@
-// Package app wires the pieces of natural-quant together: configuration,
+// Package app wires the pieces of pyrite together: configuration,
 // market data, the model router, web search, the strategy compiler and the
 // backtest engine.
 package app
@@ -10,12 +10,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/charbelkassab/natural-quant/internal/config"
-	"github.com/charbelkassab/natural-quant/internal/engine"
-	"github.com/charbelkassab/natural-quant/internal/llm"
-	"github.com/charbelkassab/natural-quant/internal/market"
-	"github.com/charbelkassab/natural-quant/internal/strategy"
-	"github.com/charbelkassab/natural-quant/internal/websearch"
+	"github.com/charbelkassab/pyrite/internal/config"
+	"github.com/charbelkassab/pyrite/internal/engine"
+	"github.com/charbelkassab/pyrite/internal/llm"
+	"github.com/charbelkassab/pyrite/internal/market"
+	"github.com/charbelkassab/pyrite/internal/strategy"
+	"github.com/charbelkassab/pyrite/internal/websearch"
 )
 
 // App holds the long-lived services.
@@ -32,7 +32,22 @@ type App struct {
 
 // New constructs the application from configuration.
 func New(cfg *config.Config) (*App, error) {
-	cacheDir, err := cfg.CacheDir("market-cache")
+	fund, err := market.LoadFundamentals(cfg.DataDir)
+	if err != nil {
+		return nil, fmt.Errorf("load fundamentals: %w", err)
+	}
+
+	// The provider is built before the cache because the cache is namespaced
+	// by it.
+	//
+	// Without that namespace, one `--offline` run writes synthetic bars to
+	// market-cache/SPY.json and every later real backtest silently reads them
+	// back believing they are the market. That is the exact failure this
+	// project exists to prevent, arriving through the back door — and the
+	// README recommends trying --offline first, so it would have been the
+	// common case rather than the rare one.
+	provider := buildProvider(cfg)
+	cacheDir, err := cfg.CacheDir(filepath.Join("market-cache", market.SafeProviderDir(provider.Name())))
 	if err != nil {
 		return nil, err
 	}
@@ -41,12 +56,6 @@ func New(cfg *config.Config) (*App, error) {
 		return nil, err
 	}
 
-	fund, err := market.LoadFundamentals(cfg.DataDir)
-	if err != nil {
-		return nil, fmt.Errorf("load fundamentals: %w", err)
-	}
-
-	provider := buildProvider(cfg)
 	store := market.NewStore(provider, diskCache, fund)
 	store.SetDataDir(cfg.DataDir)
 

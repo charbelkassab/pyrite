@@ -11,22 +11,22 @@ import (
 	"testing"
 	"time"
 
-	"github.com/charbelkassab/natural-quant/internal/app"
-	"github.com/charbelkassab/natural-quant/internal/config"
-	"github.com/charbelkassab/natural-quant/internal/market"
-	"github.com/charbelkassab/natural-quant/internal/strategy"
+	"github.com/charbelkassab/pyrite/internal/app"
+	"github.com/charbelkassab/pyrite/internal/config"
+	"github.com/charbelkassab/pyrite/internal/market"
+	"github.com/charbelkassab/pyrite/internal/strategy"
 )
 
 // The corpus test compiles and runs a broad set of natural language strategy
 // prompts against live models and live market data. It is the regression
-// suite for prompt coverage: when someone reports "natural-quant could not
+// suite for prompt coverage: when someone reports "pyrite could not
 // handle X", X belongs in testdata/corpus.json.
 //
 // It costs real money and needs network access, so it only runs when asked:
 //
-//	NQ_LIVE_TESTS=1 go test ./internal/strategy/ -run TestPromptCorpus -v -timeout 45m
+//	PYRITE_LIVE_TESTS=1 go test ./internal/strategy/ -run TestPromptCorpus -v -timeout 45m
 //
-// Set NQ_CORPUS_FILTER to a family or id substring to run a subset.
+// Set PYRITE_CORPUS_FILTER to a family or id substring to run a subset.
 
 type corpusCase struct {
 	ID     string `json:"id"`
@@ -59,8 +59,8 @@ type corpusOutcome struct {
 }
 
 func TestPromptCorpus(t *testing.T) {
-	if os.Getenv("NQ_LIVE_TESTS") != "1" {
-		t.Skip("set NQ_LIVE_TESTS=1 to run the live prompt corpus (uses real API calls)")
+	if os.Getenv("PYRITE_LIVE_TESTS") != "1" {
+		t.Skip("set PYRITE_LIVE_TESTS=1 to run the live prompt corpus (uses real API calls)")
 	}
 
 	raw, err := os.ReadFile("testdata/corpus.json")
@@ -72,7 +72,7 @@ func TestPromptCorpus(t *testing.T) {
 		t.Fatalf("parse corpus: %v", err)
 	}
 
-	if filter := os.Getenv("NQ_CORPUS_FILTER"); filter != "" {
+	if filter := os.Getenv("PYRITE_CORPUS_FILTER"); filter != "" {
 		var kept []corpusCase
 		for _, c := range cases {
 			if strings.Contains(c.ID, filter) || strings.Contains(c.Family, filter) {
@@ -119,7 +119,7 @@ func TestPromptCorpus(t *testing.T) {
 
 	report := buildCorpusReport(outcomes)
 	t.Log("\n" + report)
-	if path := os.Getenv("NQ_CORPUS_REPORT"); path != "" {
+	if path := os.Getenv("PYRITE_CORPUS_REPORT"); path != "" {
 		if err := os.WriteFile(path, []byte(report), 0o644); err != nil {
 			t.Logf("could not write report: %v", err)
 		}

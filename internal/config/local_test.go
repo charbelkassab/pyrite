@@ -116,7 +116,7 @@ func TestPickLocalModelPrefersACoder(t *testing.T) {
 func TestPickLocalModelReturnsSomethingRatherThanNothing(t *testing.T) {
 	// If embeddings are all that is installed, one is still returned. The
 	// compile then fails with the runtime's own error, which is more useful
-	// than natural-quant claiming no model exists.
+	// than pyrite claiming no model exists.
 	if got := pickLocalModel([]string{"nomic-embed-text:latest"}); got != "nomic-embed-text:latest" {
 		t.Errorf("got %q", got)
 	}

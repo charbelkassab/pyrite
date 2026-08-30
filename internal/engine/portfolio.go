@@ -5,7 +5,7 @@ import (
 	"math"
 	"sort"
 
-	"github.com/charbelkassab/natural-quant/internal/market"
+	"github.com/charbelkassab/pyrite/internal/market"
 )
 
 // Side describes the direction of a fill.
@@ -127,7 +127,7 @@ type Costs struct {
 
 // DefaultCosts is a deliberately non-zero default. A backtest with zero
 // friction flatters high-turnover strategies badly enough to be misleading,
-// so natural-quant charges realistic retail costs unless told otherwise.
+// so pyrite charges realistic retail costs unless told otherwise.
 func DefaultCosts() Costs {
 	return Costs{
 		CommissionPct:        0.0,

@@ -1,4 +1,4 @@
-"""HTTP client for a natural-quant server."""
+"""HTTP client for a pyrite server."""
 
 from __future__ import annotations
 
@@ -32,7 +32,7 @@ class RunFailed(NaturalQuantError):
 
 
 class Client:
-    """Talks to a running natural-quant server.
+    """Talks to a running pyrite server.
 
     The server does all the work. This class exists so results arrive as
     Python objects rather than JSON, and so a notebook can drive the same
@@ -55,12 +55,12 @@ class Client:
             with Client.serve(offline=True) as nq:
                 run = nq.backtest(code=..., universe=["SPY"])
 
-        The binary is found on PATH, or via NQ_BINARY, or passed explicitly.
+        The binary is found on PATH, or via PYRITE_BINARY, or passed explicitly.
         """
-        exe = binary or os.environ.get("NQ_BINARY") or shutil.which("natural-quant")
+        exe = binary or os.environ.get("PYRITE_BINARY") or shutil.which("pyrite")
         if not exe:
             raise ServerUnavailable(
-                "no natural-quant binary found. Pass binary=..., set NQ_BINARY, "
+                "no pyrite binary found. Pass binary=..., set PYRITE_BINARY, "
                 "or put it on PATH. Alternatively start one yourself and use "
                 "Client(url=...) instead."
             )
@@ -126,8 +126,8 @@ class Client:
             raise NaturalQuantError(f"{method} {path}: {e.code} {detail}") from None
         except (urllib.error.URLError, OSError) as e:
             raise ServerUnavailable(
-                f"cannot reach a natural-quant server at {self.url} ({e}). "
-                f"Start one with `natural-quant serve`, or use Client.serve()."
+                f"cannot reach a pyrite server at {self.url} ({e}). "
+                f"Start one with `pyrite serve`, or use Client.serve()."
             ) from None
         if not raw:
             return None

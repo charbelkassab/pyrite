@@ -1,0 +1,25 @@
+# The shortest path to a running instance:
+#
+#   docker compose up
+#
+# Then open http://127.0.0.1:8080. Offline by default, so it works with no
+# API key and no network. Drop --offline and set a key to use real data.
+services:
+  pyrite:
+    build: .
+    image: pyrite
+    ports:
+      - "127.0.0.1:8080:8080"
+    command: ["serve", "--addr", "0.0.0.0:8080", "--offline"]
+    environment:
+      # Uncomment whichever you have. None is also fine — see the README.
+      # - OPENAI_API_KEY
+      # - CEREBRAS_API_KEY
+      # - KIMI_API_KEY
+      - PYRITE_DATA_DIR=/data
+    volumes:
+      - pyrite-data:/data
+    restart: unless-stopped
+
+volumes:
+  pyrite-data:

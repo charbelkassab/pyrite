@@ -6,7 +6,7 @@ import (
 	"math"
 	"time"
 
-	"github.com/charbelkassab/natural-quant/internal/market"
+	"github.com/charbelkassab/pyrite/internal/market"
 )
 
 // Candidate is one strategy the search considered.

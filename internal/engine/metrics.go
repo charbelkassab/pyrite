@@ -5,7 +5,7 @@ import (
 	"math"
 	"sort"
 
-	"github.com/charbelkassab/natural-quant/internal/market"
+	"github.com/charbelkassab/pyrite/internal/market"
 )
 
 // TradingDaysPerYear is the annualisation factor for daily data.

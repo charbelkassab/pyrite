@@ -4,7 +4,7 @@ import (
 	"math"
 	"testing"
 
-	"github.com/charbelkassab/natural-quant/internal/market"
+	"github.com/charbelkassab/pyrite/internal/market"
 )
 
 func fill(day, sym string, side Side, shares, price float64) Fill {

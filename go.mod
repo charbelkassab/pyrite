@@ -1,4 +1,4 @@
-module github.com/charbelkassab/natural-quant
+module github.com/charbelkassab/pyrite
 
 go 1.25
 

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/charbelkassab/natural-quant/internal/market"
+	"github.com/charbelkassab/pyrite/internal/market"
 )
 
 // The roadmap's instruction for the vectorised fast path was to budget the

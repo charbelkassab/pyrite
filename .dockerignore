@@ -1,0 +1,9 @@
+.git
+.github
+dist
+pyrite
+*.exe
+docs/images
+python/__pycache__
+**/__pycache__
+.pyrite

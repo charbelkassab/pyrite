@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/charbelkassab/natural-quant/internal/market"
+	"github.com/charbelkassab/pyrite/internal/market"
 )
 
 // FillModel decides at what price an order submitted on day D executes.

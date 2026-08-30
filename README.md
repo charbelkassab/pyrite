@@ -1,93 +1,157 @@
 <div align="center">
 
-# natural-quant
+# pyrite
 
-**Describe a trading strategy in plain English. Watch how it would have done.**
+**Most backtests are fool's gold. This one tells you which.**
 
-natural-quant turns a sentence into a real, runnable trading strategy, backtests it
-against years of market data, and puts the result on a TradingView-grade chart next
-to any stock, index or rival strategy you want to compare it with.
+pyrite is a backtester that spends as much effort trying to disprove your
+strategy as it does running it. Describe an idea in plain English, and get back
+an equity curve *and* the specific reasons not to believe it.
 
-[Quick start](#quick-start-60-seconds) ·
-[Examples](#what-you-can-ask-for) ·
+[![CI](https://github.com/charbelkassab/pyrite/actions/workflows/ci.yml/badge.svg)](https://github.com/charbelkassab/pyrite/actions/workflows/ci.yml)
+[![Go Reference](https://pkg.go.dev/badge/github.com/charbelkassab/pyrite.svg)](https://pkg.go.dev/github.com/charbelkassab/pyrite)
+[![Go Report Card](https://goreportcard.com/badge/github.com/charbelkassab/pyrite)](https://goreportcard.com/report/github.com/charbelkassab/pyrite)
+[![Release](https://img.shields.io/github/v/release/charbelkassab/pyrite?sort=semver)](https://github.com/charbelkassab/pyrite/releases)
+[![License: MIT](https://img.shields.io/badge/licence-MIT-blue.svg)](LICENSE)
+
+[Try it in 30 seconds](#try-it-in-30-seconds) ·
+[Install](#install) ·
+[Why](#why-this-exists) ·
 [Searching](#one-backtest-is-not-evidence) ·
 [Improving](#make-this-better-without-the-usual-trap) ·
-[How it works](#how-it-works) ·
-[Which AI provider](#choosing-an-ai-provider) ·
+[Python](#from-python) ·
 [Limitations](#limitations-please-read)
 
-![natural-quant comparing a trend-following strategy against the S&P 500](docs/images/screenshot-chart.png)
+![pyrite comparing a trend-following strategy against the S&P 500](docs/images/screenshot-chart.png)
 
 </div>
 
 ---
 
-## The idea
+## Try it in 30 seconds
 
-Backtesting frameworks make you learn a framework. You want to test "buy the biggest
-company in America every day and sell it when it stops being the biggest" — and
-instead you are reading API docs about `Portfolio.rebalance()` for an hour.
+No API key. No account. No config file. No network, if you like.
 
-natural-quant removes that step. You write the idea the way you would say it out
-loud. A language model translates it into JavaScript against a documented strategy
-API, the code runs in a sandbox over real historical data, and you get an equity
-curve, trade-by-trade attribution, and a day-by-day audit trail of everything the
-strategy did and why.
+```bash
+go install github.com/charbelkassab/pyrite/cmd/pyrite@latest
 
-It is a single Go binary. No accounts, no signup, no telemetry, no cloud service.
-Bring your own model API key and run it on your laptop.
-
-```
-natural-quant run "buy $100 of the biggest company by market cap every day,
-                   and sell when that company is no longer number one"
+pyrite run --example golden-cross
 ```
 
 ```
-Daily Biggest Company Accumulator
-2020-01-01 to 2024-12-31   1258 trading days   universe of 43
+Classic 50/200 moving average crossover with a trailing stop.
 
-  Starting capital          $100,000.00
-  Final value               $116,862.64
-  Total return                   16.86%
-  Annualised (CAGR)               3.17%
-  Sharpe ratio                     0.65
-  Max drawdown                   -6.94%
-  Trades                             18
+2018-01-02 to 2023-12-29   1509 trading days   universe of 1
+
+  Total return                   74.49%
+  Annualised (CAGR)               9.74%
+  Sharpe ratio                     0.92
+  Max drawdown                  -16.07%
 
   Comparison               Total return   Max drawdown
-  Daily Biggest Company          16.86%         -6.94%
-  SPDR S&P 500 ETF               94.58%        -33.72%
+  Classic 50/200 moving          74.49%        -16.07%
+  State Street SPDR S&P…         95.54%        -33.72%
+
+How much should you believe this?  50/100
+
+  STOP too few trades to mean anything
+        2 closed round trips. A win rate or a Sharpe over this many trades
+        is noise: one different outcome moves every statistic here
+        materially.
+
+  STOP this is short volatility in disguise
+        Returns are left-skewed (-0.74) with fat tails (excess kurtosis
+        5.0): many small gains and occasional large losses. Sharpe flatters
+        this shape badly, because the risk it measures is not the risk
+        being taken.
+```
+
+That last part is the product. Every other backtester stops at the Sharpe ratio.
+
+```bash
+pyrite examples                  # seven bundled strategies, all runnable
+pyrite serve --offline --open    # the web app, on synthetic data
+pyrite doctor                    # what works right now, and how to fix the rest
 ```
 
 ---
 
-## Quick start (60 seconds)
+## Why this exists
 
-You need [Go 1.24+](https://go.dev/dl/) and one model API key.
+Backtesting is the easiest way in finance to fool yourself, and every tool
+makes it easier. Search enough parameters and something will look excellent by
+chance. Pick from today's index and you have quietly excluded every company
+that failed. Charge no commission and a strategy that trades daily looks free.
+None of this shows up in the equity curve, which is the one thing every
+backtester puts on screen.
+
+pyrite computes the things that would tell you:
+
+| It measures | So you find out |
+| --- | --- |
+| **Deflated Sharpe** | whether the Sharpe survives the number of strategies you tried to find it |
+| **Probability of backtest overfitting** | how often the in-sample winner lands below median out of sample |
+| **Walk-forward efficiency** | how much of the improvement survives on data the search never saw |
+| **Plateau ratio** | whether the winner sits on a ridge or is a lone spike |
+| **Cost sensitivity** | the slippage at which the edge disappears |
+| **Block bootstrap** | the drawdown to plan around, not the one that happened |
+| **Point-in-time membership** | what the index actually held that day, failures included |
+| **Market impact** | what your size costs, under the square-root law |
+
+And then it says so in a sentence, on every run, without being asked.
+
+It is a single Go binary. No accounts, no signup, no telemetry, no cloud
+service, no database. It runs on your laptop and writes to `~/.pyrite`.
+
+---
+
+## Install
+
+**Prebuilt binary** — [latest release](https://github.com/charbelkassab/pyrite/releases/latest),
+for Linux, macOS and Windows. Verify against `SHA256SUMS`.
+
+**Go** (needs [Go 1.25+](https://go.dev/dl/)):
 
 ```bash
-git clone https://github.com/charbelkassab/natural-quant
-cd natural-quant
-go build -o natural-quant ./cmd/natural-quant
-
-export OPENAI_API_KEY=sk-...        # or CEREBRAS_API_KEY, or KIMI_API_KEY
-./natural-quant serve
+go install github.com/charbelkassab/pyrite/cmd/pyrite@latest
 ```
 
-Open <http://127.0.0.1:8080>, type a strategy, press **Backtest it**.
-
-**No API key? No problem.** Everything except the plain-English compiler works
-offline, on deterministic synthetic data:
+**Docker**:
 
 ```bash
-./natural-quant serve --offline
+docker run --rm -p 8080:8080 ghcr.io/charbelkassab/pyrite serve --addr 0.0.0.0:8080 --offline
+# or: docker compose up
 ```
 
-Check your setup any time:
+**From source**:
 
 ```bash
-./natural-quant doctor
+git clone https://github.com/charbelkassab/pyrite && cd pyrite
+make build && ./pyrite run --example golden-cross
 ```
+
+### Turning on plain English
+
+Everything above works with no model. Compiling a *sentence* into a strategy
+needs one, and there are two ways to have one:
+
+```bash
+# Free, on your machine. pyrite finds it automatically.
+ollama pull qwen2.5-coder:7b
+
+# Or hosted, if you want the better output.
+export OPENAI_API_KEY=sk-...     # or CEREBRAS_API_KEY, or KIMI_API_KEY
+```
+
+Then:
+
+```bash
+pyrite run "buy $100 of the biggest company by market cap every day,
+            and sell when that company is no longer number one"
+```
+
+`pyrite doctor` tells you which of these it can see, and what to do if the
+answer is none.
 
 ---
 
@@ -160,7 +224,7 @@ vendored locally so the app has zero external runtime dependencies.
 
 A single backtest tells you how one configuration did over one sample. It
 cannot tell you whether the idea works or whether that particular number
-happened to fit. So natural-quant makes the second question first-class.
+happened to fit. So pyrite makes the second question first-class.
 
 **Every number is a parameter.** The compiler declares them rather than
 hardcoding them — "the 50 day average" becomes a default of 50 and a grid
@@ -176,7 +240,7 @@ function setup(ctx) {
 **Search the space, not the point.**
 
 ```
-natural-quant sweep "buy SPY when the fast average crosses above the slow one"
+pyrite sweep "buy SPY when the fast average crosses above the slow one"
 ```
 
 ```
@@ -219,7 +283,7 @@ numbers on what the eye already sees:
 **Choose on one period, report on another.**
 
 ```
-natural-quant walkforward "..." --train 504 --test 126
+pyrite walkforward "..." --train 504 --test 126
 ```
 
 Parameters are picked on each training window and applied untouched to the
@@ -246,7 +310,7 @@ backtests in under half a second on a laptop.
 ## "Make this better", without the usual trap
 
 ```
-natural-quant improve "a golden cross on SPY" --budget 8
+pyrite improve "a golden cross on SPY" --budget 8
 ```
 
 A model proposes a variant, the harness backtests it, the model reads the
@@ -357,7 +421,7 @@ access. The only path to the outside world is `ctx.ai()`, `ctx.web()` and
 
 ## Choosing an AI provider
 
-natural-quant speaks the OpenAI chat-completions protocol, so OpenAI, Cerebras and
+pyrite speaks the OpenAI chat-completions protocol, so OpenAI, Cerebras and
 Moonshot (Kimi) all work through one client. There are two very different jobs, and
 they want different models:
 
@@ -382,12 +446,12 @@ export CEREBRAS_API_KEY=csk-...
 export KIMI_API_KEY=sk-...          # or MOONSHOT_API_KEY
 
 # Override any routing decision
-export NQ_ROUTE_QUALITY=kimi
-export NQ_ROUTE_FAST=cerebras
-export NQ_CEREBRAS_MODEL=gpt-oss-120b
+export PYRITE_ROUTE_QUALITY=kimi
+export PYRITE_ROUTE_FAST=cerebras
+export PYRITE_CEREBRAS_MODEL=gpt-oss-120b
 ```
 
-`natural-quant doctor` lists exactly which models each of your keys can reach.
+`pyrite doctor` lists exactly which models each of your keys can reach.
 
 ### AI calls are cached, which changes the economics
 
@@ -401,7 +465,7 @@ AI-driven strategy, and it also makes those backtests exactly reproducible.
 ## Limitations, please read
 
 A backtesting tool that oversells itself is worse than useless. Here is what
-natural-quant genuinely cannot tell you.
+pyrite genuinely cannot tell you.
 
 **Survivorship bias.** The built-in symbol lists contain companies that matter
 *today*. A 2015 backtest picking from "mega caps" is choosing from a list we now
@@ -418,7 +482,7 @@ is generated from real filings — 8,473 rows across 290 symbols, each citing th
 accession number it came from. Rebuild or extend it yourself:
 
 ```bash
-natural-quant ingest edgar --universe megacap \
+pyrite ingest edgar --universe megacap \
     --user-agent "Your Name you@example.com"
 ```
 
@@ -449,12 +513,12 @@ name `sp500` resolves per simulated day from recorded index membership, so a
 2022 backtest can pick Silicon Valley Bank and take the loss it really produced,
 and cannot pick Tesla before it joined in December 2020. The bundled table holds
 881 tenures across 502 current and 379 former constituents, rebuilt with
-`natural-quant ingest index`.
+`pyrite ingest index`.
 
 The other universes (`megacap`, `tech`, `dow`, …) are still today's companies,
 and the remaining half of the problem is prices: free vendors do not serve
 delisted securities, so a dropped name resolves to a data error rather than a
-position unless you supply its history through `NQ_CSV_DIR`. See
+position unless you supply its history through `PYRITE_CSV_DIR`. See
 [docs/limitations.md](docs/limitations.md).
 
 **Modelled:** commissions, slippage (5 bps by default, not zero), short borrow
@@ -479,7 +543,7 @@ backtest by trying prompts until one looks good.
 The model writes against a documented API — the same document you can read:
 
 ```bash
-natural-quant api          # or click "Strategy API" in the web interface
+pyrite api          # or click "Strategy API" in the web interface
 ```
 
 A strategy is two functions:
@@ -516,27 +580,27 @@ compiler is a starting point, not a cage.
 ## Command line
 
 ```bash
-natural-quant serve [--addr host:port] [--offline] [--open] [--dev ./web]
-natural-quant run "<strategy>" [--from 2015-01-01] [--to 2024-12-31]
+pyrite serve [--addr host:port] [--offline] [--open] [--dev ./web]
+pyrite run "<strategy>" [--from 2015-01-01] [--to 2024-12-31]
                                [--cash 100000] [--benchmark SPY,QQQ]
                                [--universe tech] [--code] [--json]
                                [--code-file strategy.js]
 
-natural-quant sweep "<strategy>"        # search the parameter space
+pyrite sweep "<strategy>"        # search the parameter space
                                [--param fast=10,20,50] [--objective sharpe]
                                [--top 20] [--csv out.csv] [--max-combos 5000]
-natural-quant walkforward "<strategy>"  # optimise in-sample, report out
+pyrite walkforward "<strategy>"  # optimise in-sample, report out
                                [--train 504] [--test 126] [--embargo 200]
                                [--anchored]
-natural-quant improve "<strategy>"      # guided search against a blind holdout
+pyrite improve "<strategy>"      # guided search against a blind holdout
                                [--budget 6] [--holdout 0.3] [--goal "..."]
-natural-quant report "<strategy>"       # the full battery, as one document
+pyrite report "<strategy>"       # the full battery, as one document
                                [--out report.md] [--no-sweep] [--no-walkforward]
 
-natural-quant ingest edgar --universe megacap --user-agent "You you@example.com"
-natural-quant doctor           # check data, providers, caches
-natural-quant api              # print the strategy API reference
-natural-quant cache clear [--ai]
+pyrite ingest edgar --universe megacap --user-agent "You you@example.com"
+pyrite doctor           # check data, providers, caches
+pyrite api              # print the strategy API reference
+pyrite cache clear [--ai]
 ```
 
 `--code-file` runs a strategy you already have, skipping the compiler. Every
@@ -546,20 +610,20 @@ model call each time.
 ## Configuration
 
 Everything has a sensible default. Override with environment variables or
-`$NQ_DATA_DIR/config.json`.
+`$PYRITE_DATA_DIR/config.json`.
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `OPENAI_API_KEY` / `CEREBRAS_API_KEY` / `KIMI_API_KEY` | — | Model access |
-| `NQ_ADDR` | `127.0.0.1:8080` | Listen address |
-| `NQ_DATA_DIR` | `~/.natural-quant` | Cache and saved runs |
-| `NQ_ROUTE_QUALITY` / `NQ_ROUTE_BALANCED` / `NQ_ROUTE_FAST` | `openai` / `kimi` / `cerebras` | Tier routing |
-| `NQ_<PROVIDER>_MODEL` | see above | Per-provider model override |
-| `NQ_MAX_AI_CALLS` | `2000` | Per-run budget for `ai()` + `web()` |
-| `NQ_OFFLINE` | `false` | Synthetic data, no network |
-| `NQ_SEARCH_PROVIDER` | `duckduckgo` | `duckduckgo` or `none` |
-| `NQ_DATA_PROVIDERS` | `yahoo,stooq` | ordered fallback chain for market data |
-| `NQ_CSV_DIR` | — | a directory of `SYMBOL.csv` files, tried before any vendor |
+| `PYRITE_ADDR` | `127.0.0.1:8080` | Listen address |
+| `PYRITE_DATA_DIR` | `~/.pyrite` | Cache and saved runs |
+| `PYRITE_ROUTE_QUALITY` / `PYRITE_ROUTE_BALANCED` / `PYRITE_ROUTE_FAST` | `openai` / `kimi` / `cerebras` | Tier routing |
+| `PYRITE_<PROVIDER>_MODEL` | see above | Per-provider model override |
+| `PYRITE_MAX_AI_CALLS` | `2000` | Per-run budget for `ai()` + `web()` |
+| `PYRITE_OFFLINE` | `false` | Synthetic data, no network |
+| `PYRITE_SEARCH_PROVIDER` | `duckduckgo` | `duckduckgo` or `none` |
+| `PYRITE_DATA_PROVIDERS` | `yahoo,stooq` | ordered fallback chain for market data |
+| `PYRITE_CSV_DIR` | — | a directory of `SYMBOL.csv` files, tried before any vendor |
 
 Market data comes from Yahoo Finance's public chart endpoint (no key required),
 with Stooq behind it. Free endpoints fail in a particular way — they work for
@@ -567,7 +631,7 @@ most symbols and quietly 401 on a few — so the chain retries **only the symbol
 that failed** with the next vendor, rather than dropping those names from the
 universe and silently changing the backtest.
 
-Point `NQ_CSV_DIR` at a directory of `SYMBOL.csv` files to use your own data.
+Point `PYRITE_CSV_DIR` at a directory of `SYMBOL.csv` files to use your own data.
 The parser accepts what vendors actually emit — mixed-case headers, `Adj Close`
 or `adjclose`, ISO or US or unix dates — and falls back to the raw close when
 there is no adjusted column. This is also the only way to backtest **delisted
@@ -580,7 +644,7 @@ See [docs/data-sources.md](docs/data-sources.md) for more.
 ## The whole thing as a document
 
 ```
-natural-quant report "a golden cross on SPY" --out report.md
+pyrite report "a golden cross on SPY" --out report.md
 ```
 
 Runs the backtest, the parameter search, the walk-forward, the cost scan and a
@@ -599,7 +663,7 @@ only part a model contributes.
 ## From Python
 
 ```python
-from natural_quant import Client
+from pyrite import Client
 
 with Client.serve(offline=True) as nq:
     run = nq.backtest(code=strategy, universe=["SPY"], start="2015-01-01")
@@ -612,7 +676,7 @@ with Client.serve(offline=True) as nq:
     print(sw.surface("fast", "slow"))
 ```
 
-`pip install natural-quant`. It is a client, not a reimplementation — the Go
+`pip install pyrite`. It is a client, not a reimplementation — the Go
 binary does the work, so the notebook and the CLI can never disagree about what
 a backtest means. pandas is optional: tables come back as DataFrames when it is
 installed and as lists of dicts when it is not. See [python/](python/).
@@ -623,8 +687,8 @@ installed and as lists of dicts when it is not. See [python/](python/).
 
 ```bash
 go test ./...                       # unit tests, no network or keys needed
-go build -o natural-quant ./cmd/natural-quant
-./natural-quant serve --dev ./web   # live-edit the front end without rebuilding
+go build -o pyrite ./cmd/pyrite
+./pyrite serve --dev ./web   # live-edit the front end without rebuilding
 ```
 
 The front end is embedded with `go:embed`, so a normal build bakes in `web/`.
@@ -636,11 +700,11 @@ The project's real regression suite is a corpus of natural-language prompts that
 must compile *and* run. It costs API calls, so it is opt-in:
 
 ```bash
-NQ_LIVE_TESTS=1 go test ./internal/strategy/ -run TestPromptCorpus -v -timeout 60m
-NQ_CORPUS_FILTER=momentum NQ_LIVE_TESTS=1 go test ./internal/strategy/ -run TestPromptCorpus -v
+PYRITE_LIVE_TESTS=1 go test ./internal/strategy/ -run TestPromptCorpus -v -timeout 60m
+PYRITE_CORPUS_FILTER=momentum PYRITE_LIVE_TESTS=1 go test ./internal/strategy/ -run TestPromptCorpus -v
 ```
 
-**If natural-quant cannot handle a strategy you care about, the most useful thing
+**If pyrite cannot handle a strategy you care about, the most useful thing
 you can do is add it to [`internal/strategy/testdata/corpus.json`](internal/strategy/testdata/corpus.json)
 and open an issue.** That corpus is how the API grows — two real bugs in order
 handling were found by it on its first run.
@@ -653,6 +717,6 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 MIT. See [LICENSE](LICENSE) and [NOTICE](NOTICE) for third-party components.
 
-natural-quant is a research and education tool. It is not investment advice, it is
+pyrite is a research and education tool. It is not investment advice, it is
 not a broker, and it will not place a real order. Nothing here is a recommendation
 to buy or sell anything.

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/charbelkassab/natural-quant/internal/market"
+	"github.com/charbelkassab/pyrite/internal/market"
 )
 
 // newTestStore builds a store backed by the deterministic synthetic provider,

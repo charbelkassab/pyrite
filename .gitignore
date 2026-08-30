@@ -1,5 +1,5 @@
 # Build output
-/natural-quant
+/pyrite
 /dist/
 *.exe
 
@@ -10,7 +10,7 @@ config.json
 *.local.json
 
 # Runtime data: market cache, AI cache, saved runs
-/.natural-quant/
+/.pyrite/
 /data/cache/
 /data/runs/
 

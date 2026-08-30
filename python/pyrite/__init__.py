@@ -1,10 +1,10 @@
-"""natural-quant: a Python client for the natural-quant backtester.
+"""pyrite: a Python client for the pyrite backtester.
 
 The Go binary does the work. This package is a thin client over its JSON API,
 so nothing about the engine is reimplemented here and the two can never
 disagree about what a backtest means.
 
-    from natural_quant import Client
+    from pyrite import Client
 
     with Client.serve(offline=True) as nq:          # starts a local server
         run = nq.backtest(code=open("strategy.js").read(), universe=["SPY"])

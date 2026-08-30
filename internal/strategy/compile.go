@@ -10,10 +10,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/charbelkassab/natural-quant/internal/config"
-	"github.com/charbelkassab/natural-quant/internal/engine"
-	"github.com/charbelkassab/natural-quant/internal/llm"
-	"github.com/charbelkassab/natural-quant/internal/market"
+	"github.com/charbelkassab/pyrite/internal/config"
+	"github.com/charbelkassab/pyrite/internal/engine"
+	"github.com/charbelkassab/pyrite/internal/llm"
+	"github.com/charbelkassab/pyrite/internal/market"
 	"github.com/dop251/goja"
 )
 

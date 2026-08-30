@@ -2,43 +2,113 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, master]
   pull_request:
 
 permissions:
   contents: read
 
+env:
+  # goja requires this; see go.mod. Kept in one place so the matrix below and
+  # the release workflow cannot drift from it.
+  GO_VERSION: '1.25'
+
 jobs:
   test:
     name: Test
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.24'
+          go-version: ${{ env.GO_VERSION }}
           check-latest: true
 
       - name: Verify formatting
+        if: runner.os == 'Linux'
         run: |
-          unformatted=$(gofmt -l ./cmd ./internal)
+          unformatted=$(gofmt -l ./cmd ./internal ./examples)
           if [ -n "$unformatted" ]; then
             echo "These files need gofmt:"
             echo "$unformatted"
             exit 1
           fi
 
+      - name: Verify go.mod is tidy
+        if: runner.os == 'Linux'
+        run: |
+          go mod tidy
+          git diff --exit-code go.mod go.sum
+
       - name: Vet
         run: go vet ./...
 
-      # The unit suite runs entirely against the deterministic synthetic data
+      # The whole suite runs against the deterministic synthetic data
       # provider, so CI needs no network access and no API keys.
       - name: Test
         run: go test -race ./...
 
       - name: Build
         run: go build ./...
+
+  python:
+    name: Python client
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      # The client tests start a real server rather than mocking one: a mock
+      # would happily agree with a wrong assumption about the API's shape,
+      # which is the only failure worth catching here.
+      - name: Build the binary the tests drive
+        run: go build -o /tmp/pyrite ./cmd/pyrite
+
+      - name: Test
+        env:
+          PYRITE_BINARY: /tmp/pyrite
+        run: python3 -W error::ResourceWarning python/tests/test_client.py
+
+  smoke:
+    name: Smoke test the shipped binary
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      - run: go build -o nq ./cmd/pyrite
+
+      # Everything below is what a new user does in their first five minutes,
+      # with no API key and no network. If any of it breaks, the project is
+      # broken in the way that matters most.
+      - name: Help and version
+        run: ./nq help && ./nq version
+      - name: List bundled examples
+        run: ./nq examples
+      - name: Run a bundled example
+        run: ./nq run --example golden-cross --offline --from 2019-01-02 --to 2023-12-29
+      - name: Search a bundled example
+        run: ./nq sweep --example sixty-forty --offline --from 2019-01-02 --to 2023-12-29 --top 3
+      - name: Walk one forward
+        run: ./nq walkforward --example golden-cross --offline --from 2015-01-05 --to 2023-12-29 --train 400 --test 150
+      - name: Write a report
+        run: |
+          ./nq report --example mean-reversion --offline --from 2019-01-02 --to 2023-12-29 --out /tmp/report.md
+          test -s /tmp/report.md
+          grep -q "How much should you believe this" /tmp/report.md
+      - name: Doctor
+        run: ./nq doctor
 
   build-matrix:
     name: Build ${{ matrix.goos }}/${{ matrix.goarch }}
@@ -49,16 +119,17 @@ jobs:
         include:
           - { goos: linux,   goarch: amd64 }
           - { goos: linux,   goarch: arm64 }
+          - { goos: darwin,  goarch: amd64 }
           - { goos: darwin,  goarch: arm64 }
           - { goos: windows, goarch: amd64 }
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.24'
+          go-version: ${{ env.GO_VERSION }}
       - name: Build
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
           CGO_ENABLED: '0'
-        run: go build -o /dev/null ./cmd/natural-quant
+        run: go build -o /dev/null ./cmd/pyrite

@@ -85,16 +85,27 @@ func Criticise(res *Result) Critique {
 
 	// --- Where did the return actually come from? ------------------------
 
-	for _, s := range res.Attribution.Stress {
-		if s.ShareOfTotal > 0.4 {
-			sev := SeverityWarning
-			if s.ShareOfTotal > 0.6 {
-				sev = SeverityCritical
-			}
-			add(sev, "the return is concentrated in a few sessions",
-				"%.0f%% of the total gain disappears when %s. Whatever this strategy is, "+
-					"it is a bet on those episodes recurring.", s.ShareOfTotal*100, s.Label)
+	// Only the strongest concentration finding is reported. Both stress
+	// tests fire on the same underlying fact, and two identically titled
+	// findings read as a bug rather than as emphasis.
+	var worstStress *StressResult
+	for i := range res.Attribution.Stress {
+		if res.Attribution.Stress[i].ShareOfTotal <= 0.4 {
+			continue
 		}
+		if worstStress == nil || res.Attribution.Stress[i].ShareOfTotal > worstStress.ShareOfTotal {
+			worstStress = &res.Attribution.Stress[i]
+		}
+	}
+	if worstStress != nil {
+		sev := SeverityWarning
+		if worstStress.ShareOfTotal > 0.6 {
+			sev = SeverityCritical
+		}
+		add(sev, "the return is concentrated in a few sessions",
+			"%.0f%% of the total gain disappears when %s. Whatever this strategy is, "+
+				"it is a bet on those episodes recurring.",
+			worstStress.ShareOfTotal*100, worstStress.Label)
 	}
 	if len(res.Attribution.ByYear) >= 3 {
 		var positive int

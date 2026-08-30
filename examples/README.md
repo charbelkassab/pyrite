@@ -1,6 +1,6 @@
 # Example strategies
 
-Hand-written strategies in the natural-quant JavaScript API. They serve three
+Hand-written strategies in the pyrite JavaScript API. They serve three
 purposes: something to read when learning the API, a starting point to edit, and
 a check that the API can express these ideas cleanly without a model in the loop.
 
@@ -34,7 +34,7 @@ from the compiler's plan when you use a plain-English prompt.
 
 ## Writing your own
 
-The full API reference is `natural-quant api`, or the **Strategy API** button in
+The full API reference is `pyrite api`, or the **Strategy API** button in
 the interface. Two rules cover most mistakes:
 
 1. **Guard every indicator.** They return `null` until enough history exists.

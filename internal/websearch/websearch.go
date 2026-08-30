@@ -2,7 +2,7 @@
 //
 // Two backends are provided: DuckDuckGo's lite endpoint for general queries,
 // and Yahoo Finance's RSS headline feed for per-symbol news. Neither needs an
-// API key, which keeps natural-quant runnable straight from a clone.
+// API key, which keeps pyrite runnable straight from a clone.
 //
 // A warning that belongs next to every use of this package: these searches
 // return the internet as it is today, not as it was on the simulated date. A
@@ -26,9 +26,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/charbelkassab/natural-quant/internal/engine"
-	"github.com/charbelkassab/natural-quant/internal/llm"
-	"github.com/charbelkassab/natural-quant/internal/market"
+	"github.com/charbelkassab/pyrite/internal/engine"
+	"github.com/charbelkassab/pyrite/internal/llm"
+	"github.com/charbelkassab/pyrite/internal/market"
 )
 
 const userAgent = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0 Safari/537.36"

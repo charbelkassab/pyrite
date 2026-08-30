@@ -6,7 +6,7 @@ import (
 	"runtime"
 	"sync"
 
-	"github.com/charbelkassab/natural-quant/internal/market"
+	"github.com/charbelkassab/pyrite/internal/market"
 )
 
 // CostPoint is one run of the same strategy at a different friction level.

@@ -6,7 +6,7 @@ import (
 	"math"
 	"testing"
 
-	"github.com/charbelkassab/natural-quant/internal/market"
+	"github.com/charbelkassab/pyrite/internal/market"
 )
 
 // curveFrom builds an equity curve on consecutive weekdays from raw values.

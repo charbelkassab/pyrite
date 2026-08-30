@@ -19,7 +19,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/charbelkassab/natural-quant/internal/config"
+	"github.com/charbelkassab/pyrite/internal/config"
 )
 
 // Role constants for chat messages.
@@ -318,7 +318,7 @@ func (c *Client) resolve(req Request) (*config.Provider, error) {
 		if !p.Enabled {
 			if p.Local {
 				return nil, fmt.Errorf("nothing is answering at %s. Start %s, or set "+
-					"NQ_%s_BASE_URL if it listens elsewhere", p.BaseURL, p.Name,
+					"PYRITE_%s_BASE_URL if it listens elsewhere", p.BaseURL, p.Name,
 					strings.ToUpper(p.Name))
 			}
 			return nil, fmt.Errorf("provider %q has no API key configured", req.Provider)

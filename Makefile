@@ -1,7 +1,7 @@
-# natural-quant
+# pyrite
 
-BINARY  := natural-quant
-PKG     := ./cmd/natural-quant
+BINARY  := pyrite
+PKG     := ./cmd/pyrite
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS := -s -w -X main.version=$(VERSION)
 
@@ -27,20 +27,36 @@ offline: build ## Serve with synthetic data, no network or API keys
 test: ## Unit tests — no network, no API keys
 	go test ./...
 
+.PHONY: test-python
+test-python: build ## Python client tests against a real server
+	PYRITE_BINARY=$(PWD)/$(BINARY) python3 -W error::ResourceWarning python/tests/test_client.py
+
+.PHONY: smoke
+smoke: build ## What a new user does in their first five minutes
+	./$(BINARY) examples
+	./$(BINARY) run --example golden-cross --offline --from 2019-01-02 --to 2023-12-29
+	./$(BINARY) sweep --example sixty-forty --offline --from 2019-01-02 --to 2023-12-29 --top 3
+	./$(BINARY) report --example mean-reversion --offline --from 2019-01-02 --to 2023-12-29 --out /tmp/pyrite-report.md
+	./$(BINARY) doctor
+
+.PHONY: docker
+docker: ## Build the container image
+	docker build -t pyrite --build-arg VERSION=$(VERSION) .
+
 .PHONY: test-race
 test-race:
 	go test -race ./...
 
 .PHONY: corpus
 corpus: ## Live prompt corpus — uses real API calls and costs money
-	NQ_LIVE_TESTS=1 go test ./internal/strategy/ -run TestPromptCorpus -v -timeout 60m
+	PYRITE_LIVE_TESTS=1 go test ./internal/strategy/ -run TestPromptCorpus -v -timeout 60m
 
 .PHONY: check
-check: fmt vet test ## Format, vet and test
+check: fmt vet test ## Format, vet and test — run this before opening a PR
 
 .PHONY: fmt
 fmt:
-	gofmt -w ./cmd ./internal ./web
+	gofmt -w ./cmd ./internal ./examples ./web
 
 .PHONY: vet
 vet:

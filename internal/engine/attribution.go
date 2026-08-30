@@ -5,7 +5,7 @@ import (
 	"math"
 	"sort"
 
-	"github.com/charbelkassab/natural-quant/internal/market"
+	"github.com/charbelkassab/pyrite/internal/market"
 )
 
 // PeriodStats is the performance of one slice of the run.

@@ -1,0 +1,47 @@
+name: Wrong reference data
+description: A share count, index membership date or price looks wrong
+labels: [data]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Reference data corrections are worth more than most code changes here,
+        because every backtest that touches the wrong figure is wrong by the
+        same amount and nothing in the output says so.
+
+        **A citation is what makes this actionable.** An SEC filing, an S&P
+        announcement, or an exchange notice.
+
+  - type: dropdown
+    id: which
+    attributes:
+      label: Which table
+      options:
+        - Shares outstanding (internal/market/assets/shares_outstanding.csv)
+        - S&P 500 membership (internal/market/assets/sp500_membership.csv)
+        - Prices from a data provider
+        - Something else
+    validations:
+      required: true
+
+  - type: input
+    id: symbol
+    attributes:
+      label: Symbol
+    validations:
+      required: true
+
+  - type: textarea
+    id: wrong
+    attributes:
+      label: What the table says, and what it should say
+    validations:
+      required: true
+
+  - type: input
+    id: source
+    attributes:
+      label: Citation
+      description: A link to the filing or announcement.
+    validations:
+      required: true

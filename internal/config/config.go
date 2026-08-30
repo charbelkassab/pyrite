@@ -1,4 +1,4 @@
-// Package config loads natural-quant settings from environment variables,
+// Package config loads pyrite settings from environment variables,
 // an optional JSON config file, and built-in defaults (in that order of
 // precedence: env > file > default).
 package config
@@ -44,7 +44,7 @@ type Provider struct {
 	Enabled bool `json:"enabled"`
 	// Local marks a provider that runs on this machine and needs no key.
 	//
-	// This is what lets natural-quant work with no account at all: point it
+	// This is what lets pyrite work with no account at all: point it
 	// at Ollama or LM Studio and the plain-English compiler, which is
 	// otherwise the one feature a key gates, works for free.
 	Local bool `json:"local,omitempty"`
@@ -100,7 +100,7 @@ func Defaults() *Config {
 	home, _ := os.UserHomeDir()
 	return &Config{
 		Addr:    "127.0.0.1:8080",
-		DataDir: filepath.Join(home, ".natural-quant"),
+		DataDir: filepath.Join(home, ".pyrite"),
 		Providers: map[string]*Provider{
 			"openai": {
 				Name:    "openai",
@@ -191,15 +191,15 @@ func (c *Config) applyEnv() {
 				break
 			}
 		}
-		// Allow per-provider overrides, e.g. NQ_CEREBRAS_MODEL.
+		// Allow per-provider overrides, e.g. PYRITE_CEREBRAS_MODEL.
 		up := strings.ToUpper(name)
-		if v := os.Getenv("NQ_" + up + "_MODEL"); v != "" {
+		if v := os.Getenv("PYRITE_" + up + "_MODEL"); v != "" {
 			p.Model = v
 		}
-		if v := os.Getenv("NQ_" + up + "_BASE_URL"); v != "" {
+		if v := os.Getenv("PYRITE_" + up + "_BASE_URL"); v != "" {
 			p.BaseURL = v
 		}
-		if v := os.Getenv("NQ_" + up + "_API_KEY"); v != "" {
+		if v := os.Getenv("PYRITE_" + up + "_API_KEY"); v != "" {
 			p.APIKey = v
 		}
 		// A local runtime needs no key. Whether it is actually running is
@@ -207,13 +207,13 @@ func (c *Config) applyEnv() {
 		p.Enabled = p.APIKey != "" || (p.Local && p.Detected)
 	}
 
-	if v := os.Getenv("NQ_ADDR"); v != "" {
+	if v := os.Getenv("PYRITE_ADDR"); v != "" {
 		c.Addr = v
 	}
-	if v := os.Getenv("NQ_DATA_DIR"); v != "" {
+	if v := os.Getenv("PYRITE_DATA_DIR"); v != "" {
 		c.DataDir = v
 	}
-	if v := os.Getenv("NQ_DATA_PROVIDERS"); v != "" {
+	if v := os.Getenv("PYRITE_DATA_PROVIDERS"); v != "" {
 		var names []string
 		for _, part := range strings.Split(v, ",") {
 			if part = strings.ToLower(strings.TrimSpace(part)); part != "" {
@@ -224,30 +224,30 @@ func (c *Config) applyEnv() {
 			c.DataProviders = names
 		}
 	}
-	if v := strings.TrimSpace(os.Getenv("NQ_CSV_DIR")); v != "" {
+	if v := strings.TrimSpace(os.Getenv("PYRITE_CSV_DIR")); v != "" {
 		c.CSVDir = v
 	}
-	if v := os.Getenv("NQ_SEARCH_PROVIDER"); v != "" {
+	if v := os.Getenv("PYRITE_SEARCH_PROVIDER"); v != "" {
 		c.SearchProvider = v
 	}
 	for tier, env := range map[Tier]string{
-		TierFast:     "NQ_ROUTE_FAST",
-		TierBalanced: "NQ_ROUTE_BALANCED",
-		TierQuality:  "NQ_ROUTE_QUALITY",
+		TierFast:     "PYRITE_ROUTE_FAST",
+		TierBalanced: "PYRITE_ROUTE_BALANCED",
+		TierQuality:  "PYRITE_ROUTE_QUALITY",
 	} {
 		if v := os.Getenv(env); v != "" {
 			c.Routes[tier] = v
 		}
 	}
-	if v := os.Getenv("NQ_MAX_AI_CALLS"); v != "" {
+	if v := os.Getenv("PYRITE_MAX_AI_CALLS"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil {
 			c.MaxAICallsPerRun = n
 		}
 	}
-	if boolEnv("NQ_OFFLINE") {
+	if boolEnv("PYRITE_OFFLINE") {
 		c.OfflineMode = true
 	}
-	if boolEnv("NQ_CACHE_ONLY") {
+	if boolEnv("PYRITE_CACHE_ONLY") {
 		c.CacheOnly = true
 	}
 }
@@ -414,7 +414,7 @@ func probeLocalModels(ctx context.Context, baseURL string) []string {
 // instruction-tuned model is preferred over a base one, and a larger
 // parameter count over a smaller one. This is a heuristic over model names
 // because there is nothing else to go on, and it is only a default: the user
-// can always pin one with NQ_OLLAMA_MODEL.
+// can always pin one with PYRITE_OLLAMA_MODEL.
 func pickLocalModel(models []string) string {
 	if len(models) == 0 {
 		return ""

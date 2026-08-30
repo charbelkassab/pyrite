@@ -47,7 +47,7 @@ func (r *Report) Markdown() string {
 	if r.Prompt != "" {
 		fmt.Fprintf(&b, "> %s\n\n", r.Prompt)
 	}
-	fmt.Fprintf(&b, "*Generated %s by natural-quant.*\n\n",
+	fmt.Fprintf(&b, "*Generated %s by pyrite.*\n\n",
 		r.Generated.UTC().Format("2 January 2006"))
 
 	if r.Narrative != "" {

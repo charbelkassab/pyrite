@@ -11,7 +11,7 @@ import (
 func systemPrompt() string {
 	var b strings.Builder
 
-	b.WriteString(`You are the strategy compiler for natural-quant, a backtesting tool.
+	b.WriteString(`You are the strategy compiler for pyrite, a backtesting tool.
 You translate a trading idea written in plain language into a JavaScript
 strategy that runs against historical daily market data.
 

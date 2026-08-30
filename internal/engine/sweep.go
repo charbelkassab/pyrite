@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/charbelkassab/natural-quant/internal/market"
+	"github.com/charbelkassab/pyrite/internal/market"
 )
 
 // SweepSpec describes a search over a strategy's declared parameters.

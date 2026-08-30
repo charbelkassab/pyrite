@@ -1,4 +1,4 @@
-natural-quant
+pyrite
 Copyright (c) 2026 Charbel Kassab
 
 This product bundles the following third-party components.
@@ -10,7 +10,7 @@ Copyright (c) 2025 TradingView, Inc.
 Licensed under the Apache License, Version 2.0
 https://github.com/tradingview/lightweight-charts/blob/master/LICENSE
 
-Vendored rather than loaded from a CDN so that natural-quant runs fully
+Vendored rather than loaded from a CDN so that pyrite runs fully
 offline and ships as a single self-contained binary.
 --------------------------------------------------------------------------
 goja — github.com/dop251/goja

@@ -11,7 +11,7 @@ import (
 
 // SyntheticProvider generates deterministic pseudo-random price histories.
 //
-// It exists so natural-quant can be demoed, developed against and tested in
+// It exists so pyrite can be demoed, developed against and tested in
 // CI with no network access and no API keys. Every symbol produces a stable
 // series derived from a hash of its ticker, so runs are reproducible and
 // tests can assert exact numbers.

@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/charbelkassab/natural-quant/internal/config"
-	"github.com/charbelkassab/natural-quant/internal/engine"
-	"github.com/charbelkassab/natural-quant/internal/llm"
-	"github.com/charbelkassab/natural-quant/internal/strategy"
+	"github.com/charbelkassab/pyrite/internal/config"
+	"github.com/charbelkassab/pyrite/internal/engine"
+	"github.com/charbelkassab/pyrite/internal/llm"
+	"github.com/charbelkassab/pyrite/internal/strategy"
 )
 
 // ModelProposer asks a model for the next strategy to try.
@@ -76,7 +76,7 @@ func (m *ModelProposer) Propose(ctx context.Context, history []engine.Candidate)
 // proposerSystemPrompt sets the rules the proposer works under.
 func proposerSystemPrompt() string {
 	var b strings.Builder
-	b.WriteString(`You are improving a trading strategy for natural-quant, under a
+	b.WriteString(`You are improving a trading strategy for pyrite, under a
 strict experimental protocol.
 
 # What you can and cannot see
