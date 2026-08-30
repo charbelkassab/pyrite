@@ -339,6 +339,130 @@ func (v *strategyVM) installContext() error {
 		h, l, c := e.ohlc(sym, n*4+5)
 		return nanToNull(ATR(h, l, c, n))
 	})
+	// ---- Extended indicators -------------------------------------------
+	//
+	// These exist so the compiler never has to hand-roll one in JavaScript.
+	// Each takes the same shape as the originals: a symbol, a window, and
+	// null when there is not enough history.
+
+	set("wma", func(sym string, n int) any { return nanToNull(WMA(e.closes(sym, n+1), defInt(n, 20))) })
+	set("hma", func(sym string, n int) any {
+		n = defInt(n, 20)
+		return nanToNull(HMA(e.closes(sym, n*2+10), n))
+	})
+	set("roc", func(sym string, n int) any { return nanToNull(ROC(e.closes(sym, n+2), defInt(n, 20))) })
+	set("trix", func(sym string, n int) any {
+		n = defInt(n, 15)
+		return nanToNull(TRIX(e.closes(sym, n*4+10), n))
+	})
+	set("adx", func(sym string, n int) any {
+		n = defInt(n, 14)
+		h, l, c := e.ohlc(sym, n*4+10)
+		r := ADX(h, l, c, n)
+		if math.IsNaN(r.ADX) {
+			return nil
+		}
+		return map[string]any{"adx": r.ADX, "plusDI": nanToNull(r.PlusDI), "minusDI": nanToNull(r.MinusDI)}
+	})
+	set("cci", func(sym string, n int) any {
+		n = defInt(n, 20)
+		h, l, c := e.ohlc(sym, n+2)
+		return nanToNull(CCI(h, l, c, n))
+	})
+	set("stochastic", func(sym string, n, smooth int) any {
+		n, smooth = defInt(n, 14), defInt(smooth, 3)
+		h, l, c := e.ohlc(sym, n+smooth+2)
+		r := Stochastic(h, l, c, n, smooth)
+		if math.IsNaN(r.K) {
+			return nil
+		}
+		return map[string]any{"k": r.K, "d": nanToNull(r.D)}
+	})
+	set("williamsR", func(sym string, n int) any {
+		n = defInt(n, 14)
+		h, l, c := e.ohlc(sym, n+2)
+		return nanToNull(WilliamsR(h, l, c, n))
+	})
+	set("obv", func(sym string, n int) any {
+		c, v := e.closesVolumes(sym, defInt(n, 60))
+		return nanToNull(OBV(c, v))
+	})
+	set("mfi", func(sym string, n int) any {
+		n = defInt(n, 14)
+		h, l, c, v := e.ohlcv(sym, n+2)
+		return nanToNull(MFI(h, l, c, v, n))
+	})
+	set("vwap", func(sym string, n int) any {
+		n = defInt(n, 20)
+		h, l, c, v := e.ohlcv(sym, n+1)
+		return nanToNull(VWAP(h, l, c, v, n))
+	})
+	set("cmf", func(sym string, n int) any {
+		n = defInt(n, 20)
+		h, l, c, v := e.ohlcv(sym, n+1)
+		return nanToNull(CMF(h, l, c, v, n))
+	})
+	set("donchian", func(sym string, n int) any {
+		n = defInt(n, 20)
+		h, l, _ := e.ohlc(sym, n+1)
+		return channelMap(Donchian(h, l, n))
+	})
+	set("keltner", func(sym string, n int, mult float64) any {
+		n = defInt(n, 20)
+		h, l, c := e.ohlc(sym, n*3+5)
+		return channelMap(Keltner(h, l, c, n, mult))
+	})
+	set("supertrend", func(sym string, n int, mult float64) any {
+		n = defInt(n, 10)
+		h, l, c := e.ohlc(sym, n*6+10)
+		r := SuperTrend(h, l, c, n, mult)
+		if math.IsNaN(r.Value) {
+			return nil
+		}
+		return map[string]any{"value": r.Value, "trend": r.Trend}
+	})
+	set("aroon", func(sym string, n int) any {
+		n = defInt(n, 25)
+		h, l, _ := e.ohlc(sym, n+2)
+		r := Aroon(h, l, n)
+		if math.IsNaN(r.Up) {
+			return nil
+		}
+		return map[string]any{"up": r.Up, "down": r.Down, "oscillator": r.Oscillator}
+	})
+	set("psar", func(sym string, step, max float64) any {
+		h, l, _ := e.ohlc(sym, 120)
+		return nanToNull(PSAR(h, l, step, max))
+	})
+	set("ichimoku", func(sym string, conv, base, span int) any {
+		conv, base, span = defInt(conv, 9), defInt(base, 26), defInt(span, 52)
+		h, l, _ := e.ohlc(sym, span+2)
+		r := Ichimoku(h, l, conv, base, span)
+		if math.IsNaN(r.SpanB) {
+			return nil
+		}
+		return map[string]any{
+			"conversion": nanToNull(r.Conversion), "base": nanToNull(r.Base),
+			"spanA": nanToNull(r.SpanA), "spanB": r.SpanB,
+		}
+	})
+	set("choppiness", func(sym string, n int) any {
+		n = defInt(n, 14)
+		h, l, c := e.ohlc(sym, n+2)
+		return nanToNull(Choppiness(h, l, c, n))
+	})
+	set("linreg", func(sym string, n int) any {
+		n = defInt(n, 20)
+		r := LinReg(e.closes(sym, n+1), n)
+		if math.IsNaN(r.Slope) {
+			return nil
+		}
+		return map[string]any{
+			"slope": r.Slope, "intercept": r.Intercept,
+			"r2": r.R2, "forecast": r.Forecast,
+		}
+	})
+
 	set("correlation", func(a, b string, n int) any {
 		n = defInt(n, 60)
 		ra, rb := Returns(e.closes(a, n+1)), Returns(e.closes(b, n+1))
@@ -934,6 +1058,42 @@ func (e *Engine) ohlc(sym string, n int) (high, low, close []float64) {
 		close = append(close, b.AdjClose)
 	}
 	return
+}
+
+// ohlcv is ohlc plus volume, for the flow indicators.
+func (e *Engine) ohlcv(sym string, n int) (high, low, close, volume []float64) {
+	bars := e.historyBars(sym, defInt(n, 20))
+	for _, b := range bars {
+		sf := b.SplitFactor()
+		high = append(high, b.High*sf)
+		low = append(low, b.Low*sf)
+		close = append(close, b.AdjClose)
+		// Volume is adjusted inversely to price: a 4:1 split quadruples the
+		// share count, and pairing raw volume with adjusted prices would
+		// misstate every money-flow reading across a split.
+		if sf > 0 {
+			volume = append(volume, b.Volume/sf)
+		} else {
+			volume = append(volume, b.Volume)
+		}
+	}
+	return
+}
+
+// closesVolumes returns the two series OBV needs.
+func (e *Engine) closesVolumes(sym string, n int) (close, volume []float64) {
+	_, _, close, volume = e.ohlcv(sym, n)
+	return
+}
+
+// channelMap renders any upper/middle/lower band for JavaScript.
+func channelMap(c ChannelResult) any {
+	if math.IsNaN(c.Middle) {
+		return nil
+	}
+	return map[string]any{
+		"upper": nanToNull(c.Upper), "middle": c.Middle, "lower": nanToNull(c.Lower),
+	}
 }
 
 func (e *Engine) positionMap(sym string) map[string]any {

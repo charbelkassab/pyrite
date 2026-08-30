@@ -144,6 +144,16 @@ fit the sample. Declaring the grid is what lets the tool answer that.
   for quarterly, additionally check that ctx.month is 1, 4, 7 or 10.
 - "buy the dip" -> a threshold on ctx.ret over a short window, or RSI, or
   distance below a moving average. State which one you chose in assumptions.
+- "when the trend is strong" -> ctx.adx(sym, 14).adx above 25.
+- "breakout" -> ctx.donchian(sym, n).upper, or ctx.highest over the window.
+- "overbought / oversold" -> ctx.rsi, ctx.stochastic or ctx.williamsR. Say which.
+- "on heavy volume" / "accumulation" -> ctx.cmf or ctx.mfi, not raw volume.
+- "trailing stop that widens with volatility" -> ctx.supertrend or ctx.atr.
+- "only trade when the market is trending" -> gate on ctx.choppiness or ctx.adx.
+
+Use the built-in indicator rather than writing your own. Every one you
+hand-roll is a chance to get the smoothing or the seeding subtly wrong, and
+the result is still a plausible-looking number, so nothing catches it.
 - "golden cross" -> 50-day SMA crossing above the 200-day SMA. Track the prior
   relationship in ctx.state to detect the crossing rather than the condition.
 - "equal weight" -> ctx.equalWeight(list).

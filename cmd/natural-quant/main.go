@@ -34,6 +34,7 @@ Usage:
   natural-quant doctor                   check data, model providers and caches
   natural-quant api                      print the strategy API reference
   natural-quant cache clear [--ai]       clear cached market data and replies
+  natural-quant run ... [--cost-scan]
   natural-quant sweep "<strategy>" [--param fast=10,20,50] [--objective sharpe]
                                    [--csv out.csv] [--top 20]
   natural-quant walkforward "<strategy>" [--train 504] [--test 126]
@@ -177,6 +178,7 @@ func cmdRun(args []string) error {
 	showCode := fs.Bool("code", false, "print the generated strategy code")
 	fillClose := fs.Bool("fill-close", false, "fill at the same day's close instead of the next open")
 	codeFile := fs.String("code-file", "", "run this JavaScript strategy instead of compiling a prompt")
+	costScan := fs.Bool("cost-scan", false, "also re-run at 0, 5, 20 and 50 bps of slippage")
 	warmupFlag := fs.Int("warmup", 0, "bars of history to load before the start date")
 	// Separate the prompt from the flags before parsing. Go's flag package
 	// stops at the first positional argument, so without this a command like
@@ -284,7 +286,38 @@ func cmdRun(args []string) error {
 		return enc.Encode(map[string]any{"plan": plan, "result": res})
 	}
 	printReport(plan, res)
+
+	// The cost scan runs after the report because it is a separate question:
+	// not "how did this do" but "how much of that survives friction".
+	if *costScan {
+		scan, err := engine.RunCostScan(ctx, spec, a.Store, nil)
+		if err != nil {
+			return err
+		}
+		printCostScan(scan)
+	}
 	return nil
+}
+
+// printCostScan reports the same strategy at several friction levels.
+func printCostScan(s *engine.CostScan) {
+	fmt.Printf("\nHow much survives friction?\n")
+	fmt.Printf("  %-12s %14s %12s %12s %10s\n", "Slippage", "Return", "CAGR", "Sharpe", "Costs")
+	for _, p := range s.Points {
+		if p.Error != "" {
+			fmt.Printf("  %-12s %s\n", fmt.Sprintf("%.0f bps", p.SlippageBps), truncate(p.Error, 50))
+			continue
+		}
+		fmt.Printf("  %-12s %14s %12s %12s %10s\n",
+			fmt.Sprintf("%.0f bps", p.SlippageBps),
+			pct(p.TotalReturn), pct(p.CAGR), ratio(p.Sharpe), money(p.TotalCosts))
+	}
+	if s.BreakEvenBps.Defined() {
+		fmt.Printf("\n  %-30s %14s\n", "Break-even slippage", fmt.Sprintf("%.1f bps", float64(s.BreakEvenBps)))
+	}
+	if s.Verdict != "" {
+		fmt.Printf("\n  %s\n", wrapIndent(s.Verdict, 74, "  "))
+	}
 }
 
 // printReport renders a human-readable summary to stdout.

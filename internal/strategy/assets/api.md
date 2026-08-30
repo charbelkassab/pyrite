@@ -87,6 +87,52 @@ All take a symbol and return a number, or `null` when history is short.
 | `ctx.highest(sym, n)` / `ctx.lowest(sym, n)` | extremes over n bars |
 | `ctx.correlation(a, b, n)` / `ctx.beta(sym, benchmark, n)` | pairwise stats |
 
+### Trend and momentum
+
+| Call | Meaning |
+| --- | --- |
+| `ctx.wma(sym, n)` / `ctx.hma(sym, n)` | weighted and Hull moving averages |
+| `ctx.roc(sym, n)` | rate of change over n bars, as a fraction |
+| `ctx.trix(sym, n)` | rate of change of a triple-smoothed EMA |
+| `ctx.adx(sym, n)` | `{adx, plusDI, minusDI}` — trend strength; above 25 is a trend |
+| `ctx.aroon(sym, n)` | `{up, down, oscillator}` — how recently the extremes occurred |
+| `ctx.psar(sym, step, max)` | parabolic stop and reverse, an accelerating trailing stop |
+| `ctx.supertrend(sym, n, mult)` | `{value, trend}` — ATR band; `trend` is +1 or -1 |
+| `ctx.ichimoku(sym, conv, base, span)` | `{conversion, base, spanA, spanB}` |
+| `ctx.linreg(sym, n)` | `{slope, intercept, r2, forecast}` — least squares over the window |
+
+### Oscillators
+
+| Call | Meaning |
+| --- | --- |
+| `ctx.stochastic(sym, n, smooth)` | `{k, d}` — where the close sits in the range, 0..100 |
+| `ctx.williamsR(sym, n)` | the same idea on a -100..0 scale |
+| `ctx.cci(sym, n)` | commodity channel index; ±100 is the conventional band |
+| `ctx.choppiness(sym, n)` | 0..100; high means ranging, low means trending |
+
+### Volume and flow
+
+| Call | Meaning |
+| --- | --- |
+| `ctx.obv(sym, n)` | on-balance volume over the last n bars |
+| `ctx.mfi(sym, n)` | money flow index — RSI weighted by volume |
+| `ctx.vwap(sym, n)` | volume-weighted average price |
+| `ctx.cmf(sym, n)` | Chaikin money flow; positive is accumulation |
+
+Volume is split-adjusted to match the adjusted prices beside it, so a money-flow
+reading does not jump on the day of a split.
+
+### Channels
+
+| Call | Meaning |
+| --- | --- |
+| `ctx.donchian(sym, n)` | `{upper, middle, lower}` — the n-bar high and low |
+| `ctx.keltner(sym, n, mult)` | `{upper, middle, lower}` — EMA with ATR bands |
+
+Bollinger bands widen with dispersion around the mean; Keltner bands widen with
+realised range. On a series that gaps and then sits still they say different
+things, so pick deliberately.
+
 ## Market capitalisation and ranking
 
 | Call | Returns |
