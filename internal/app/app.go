@@ -66,6 +66,15 @@ func New(cfg *config.Config) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Probe for a local model runtime before anything asks whether a
+	// provider exists. Offline mode skips it: that mode promises no network
+	// at all, and loopback is still network.
+	if !cfg.OfflineMode {
+		detectCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		cfg.DetectLocal(detectCtx)
+		cancel()
+	}
+
 	client := llm.New(cfg, aiCache)
 
 	searchEnabled := !cfg.OfflineMode && cfg.SearchProvider != "" && cfg.SearchProvider != "none"
@@ -340,6 +349,9 @@ type ProviderHealth struct {
 	Reachable *bool    `json:"reachable,omitempty"`
 	Models    []string `json:"models,omitempty"`
 	Error     string   `json:"error,omitempty"`
+	// Local marks a runtime on this machine, which needs no key.
+	Local   bool   `json:"local,omitempty"`
+	BaseURL string `json:"base_url,omitempty"`
 }
 
 // Health reports subsystem status. When probe is true it makes a live call to
@@ -357,12 +369,15 @@ func (a *App) Health(ctx context.Context, probe bool) Health {
 		h.Routes[string(tier)] = name
 	}
 
-	for _, name := range []string{"openai", "cerebras", "kimi"} {
+	for _, name := range []string{"openai", "cerebras", "kimi", "ollama", "lmstudio"} {
 		p, ok := a.Cfg.Providers[name]
 		if !ok {
 			continue
 		}
-		ph := ProviderHealth{Name: name, Enabled: p.Enabled, Model: p.Model}
+		ph := ProviderHealth{
+			Name: name, Enabled: p.Enabled, Model: p.Model,
+			Local: p.Local, BaseURL: p.BaseURL,
+		}
 		if probe && p.Enabled {
 			cctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 			models, err := a.LLM.ListModels(cctx, name)

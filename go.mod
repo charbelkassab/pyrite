@@ -1,6 +1,6 @@
 module github.com/charbelkassab/natural-quant
 
-go 1.25.12
+go 1.25
 
 require github.com/dop251/goja v0.0.0-20260806115107-493f22071ef6
 

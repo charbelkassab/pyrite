@@ -5,6 +5,11 @@
 // was on the simulated day, and the model knows what happened after that date.
 // This backtest demonstrates a mechanism; it is not evidence the idea works.
 // See docs/limitations.md.
+//
+// universe: AAPL
+// benchmarks: AAPL
+// warmup: 5
+// needs_model: true
 
 function setup(ctx) {
   ctx.universe(["AAPL"]);

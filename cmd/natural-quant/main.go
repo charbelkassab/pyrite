@@ -15,6 +15,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/charbelkassab/natural-quant/examples"
 	"github.com/charbelkassab/natural-quant/internal/app"
 	"github.com/charbelkassab/natural-quant/internal/config"
 	"github.com/charbelkassab/natural-quant/internal/engine"
@@ -32,6 +33,8 @@ whether the result means anything.
 Usage:
   natural-quant serve [flags]              start the web app (default)
   natural-quant run "<strategy>"           one backtest, with its own critique
+  natural-quant run --example NAME         run a bundled strategy, no key needed
+  natural-quant examples                   list the bundled strategies
   natural-quant report "<strategy>"        the full battery, as one document
 
 Searching, because one backtest is one point in a space:
@@ -74,7 +77,8 @@ A key is needed only to compile plain language. Everything else — including
 every search above — runs on --code-file with no key at all.
 
 Examples:
-  natural-quant serve
+  natural-quant serve --offline --open
+  natural-quant run --example golden-cross
   natural-quant run "buy $100 of the biggest company by market cap each day, sell when it is no longer number one"
   natural-quant sweep "golden cross on SPY" --from 2015-01-01
   natural-quant walkforward "each month hold the 20 strongest S&P 500 names" --universe sp500
@@ -120,6 +124,8 @@ func run() error {
 		return cmdImprove(args)
 	case "report":
 		return cmdReport(args)
+	case "examples":
+		return cmdExamples(args)
 	case "version", "-v", "--version":
 		fmt.Printf("natural-quant %s\n", version)
 		return nil
@@ -202,6 +208,8 @@ func cmdRun(args []string) error {
 	showCode := fs.Bool("code", false, "print the generated strategy code")
 	fillClose := fs.Bool("fill-close", false, "fill at the same day's close instead of the next open")
 	codeFile := fs.String("code-file", "", "run this JavaScript strategy instead of compiling a prompt")
+	example := fs.String("example", "",
+		"run a bundled example; `natural-quant examples` lists them")
 	costScan := fs.Bool("cost-scan", false, "also re-run at 0, 5, 20 and 50 bps of slippage")
 	impact := fs.Float64("impact", 0,
 		"market impact coefficient; 1 is the usual estimate, 0 disables the model")
@@ -216,19 +224,27 @@ func cmdRun(args []string) error {
 	}
 	// Anything still positional belongs to the prompt too.
 	prompt = strings.TrimSpace(strings.Join(append([]string{prompt}, fs.Args()...), " "))
-	if prompt == "" && *codeFile == "" {
+	if prompt == "" && *codeFile == "" && *example == "" {
 		return fmt.Errorf("describe a strategy, for example:\n" +
-			"  natural-quant run \"buy SPY when the 50 day average crosses above the 200 day\"\n" +
-			"  or pass --code-file strategy.js to run code you already have")
+			"  natural-quant run \"buy SPY when the 50 day average crosses above the 200 day\"\n\n" +
+			"No API key yet? Try a bundled one instead — it needs nothing:\n" +
+			"  natural-quant run --example golden-cross\n" +
+			"  natural-quant examples")
 	}
 
 	a, err := newApp(fs, offline)
 	if err != nil {
 		return err
 	}
-	if *codeFile == "" && !a.Cfg.AnyProviderEnabled() {
-		return fmt.Errorf("no model API key found. Set OPENAI_API_KEY, CEREBRAS_API_KEY or KIMI_API_KEY,\n" +
-			"  or pass --code-file to run a strategy you already have")
+	if *codeFile == "" && *example == "" && !a.Cfg.AnyProviderEnabled() {
+		return fmt.Errorf("compiling plain English needs a model, and none is configured.\n\n" +
+			"  Try a bundled strategy instead — it needs nothing:\n" +
+			"    natural-quant run --example golden-cross\n" +
+			"    natural-quant examples\n\n" +
+			"  Or turn compilation on:\n" +
+			"    free   — install Ollama, then: ollama pull qwen2.5-coder:7b\n" +
+			"    hosted — export OPENAI_API_KEY, CEREBRAS_API_KEY or KIMI_API_KEY\n" +
+			"    then:    natural-quant doctor")
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -264,7 +280,35 @@ func cmdRun(args []string) error {
 	opts.ApplyDefaults()
 
 	var plan *strategy.Plan
-	if *codeFile != "" {
+	if *example != "" {
+		ex, err := examples.Get(*example)
+		if err != nil {
+			return err
+		}
+		plan = &strategy.Plan{
+			Name: ex.Title, Description: ex.Summary, Code: ex.Code,
+			Universe: ex.Universe, Benchmarks: ex.Benchmarks,
+			Warmup: ex.Warmup, AllowShort: ex.AllowShort,
+		}
+		if plan.Name == "" {
+			plan.Name = ex.Name
+		}
+		// The example's own declarations stand unless the caller overrode
+		// them on the command line.
+		if len(opts.Universe) == 0 && len(ex.Universe) > 0 {
+			opts.Universe = market.ResolveUniverse(strings.Join(ex.Universe, ","))
+			opts.Index = market.IndexUniverse(strings.Join(ex.Universe, ","))
+		}
+		if *benchmark == "SPY" && len(ex.Benchmarks) > 0 {
+			opts.Benchmarks = market.ResolveUniverse(strings.Join(ex.Benchmarks, ","))
+		}
+		if ex.NeedsModel && !a.Cfg.AnyProviderEnabled() {
+			return fmt.Errorf("the %q example calls a model inside the backtest, so it needs one.\n"+
+				"  free   — install Ollama, then: ollama pull qwen2.5-coder:7b\n"+
+				"  hosted — export OPENAI_API_KEY, CEREBRAS_API_KEY or KIMI_API_KEY\n"+
+				"Every other example runs with nothing: natural-quant examples", ex.Name)
+		}
+	} else if *codeFile != "" {
 		code, err := os.ReadFile(*codeFile)
 		if err != nil {
 			return err
@@ -458,26 +502,68 @@ func cmdDoctor(args []string) error {
 	fmt.Printf("offline mode       %v\n", h.OfflineMode)
 	fmt.Printf("web search         %v\n", h.SearchOK)
 	fmt.Printf("fundamentals       %s\n", h.Fundamentals)
+	fmt.Printf("index membership   %s\n", membershipSummary(a))
 	fmt.Printf("data directory     %s\n", h.DataDir)
 	fmt.Printf("cached symbols     %d (%.1f MB)\n", h.CachedSymbols, float64(h.CacheBytes)/(1<<20))
+
 	fmt.Printf("\nmodel providers\n")
 	for _, p := range h.Providers {
 		status := "no API key"
+		if p.Local {
+			status = "not running at " + p.BaseURL
+		}
 		switch {
 		case p.Reachable != nil && *p.Reachable:
 			status = fmt.Sprintf("ok, %d models available", len(p.Models))
 		case p.Reachable != nil:
-			status = "unreachable: " + p.Error
+			status = "unreachable: " + truncate(p.Error, 44)
 		case p.Enabled:
-			status = "key present"
+			status = "detected"
+			if !p.Local {
+				status = "key present"
+			}
 		}
-		fmt.Printf("  %-10s %-28s %s\n", p.Name, p.Model, status)
+		model := p.Model
+		if model == "" {
+			model = "—"
+		}
+		fmt.Printf("  %-10s %-28s %s\n", p.Name, truncate(model, 28), status)
 	}
 	fmt.Printf("\nrouting            %s\n", a.DescribeRoutes())
-	if !a.Cfg.AnyProviderEnabled() {
-		fmt.Printf("\nNo model API key is configured. Set one of OPENAI_API_KEY,\nCEREBRAS_API_KEY or KIMI_API_KEY to compile strategies.\n")
+
+	// The point of this command is to tell someone what to do next, so it
+	// ends with that rather than with a status dump.
+	fmt.Printf("\nWhat you can do right now\n")
+	if a.Cfg.AnyProviderEnabled() {
+		fmt.Printf("  ✓ everything, including plain-English strategies\n")
+		if !a.Cfg.AnyCloudProviderEnabled() {
+			fmt.Printf("    (served by a local model — free, and slower than a hosted one)\n")
+		}
+	} else {
+		fmt.Printf("  ✓ run, sweep, walkforward and report, with --code-file\n")
+		fmt.Printf("  ✓ everything offline on synthetic data, with --offline\n")
+		fmt.Printf("  ✗ compiling plain English into a strategy\n")
+		fmt.Printf("\n  To turn the last one on, either:\n")
+		fmt.Printf("    free   — install Ollama and run:  ollama pull qwen2.5-coder:7b\n")
+		fmt.Printf("             natural-quant finds it automatically on 127.0.0.1:11434\n")
+		fmt.Printf("    hosted — export OPENAI_API_KEY, CEREBRAS_API_KEY or KIMI_API_KEY\n")
+	}
+	if h.OfflineMode {
+		fmt.Printf("\n  Offline mode is on, so prices are deterministic synthetic data,\n")
+		fmt.Printf("  not the market. Good for demos and tests, not for conclusions.\n")
 	}
 	return nil
+}
+
+// membershipSummary reports what the point-in-time index table covers.
+func membershipSummary(a *app.App) string {
+	m, err := a.Store.Membership("sp500")
+	if err != nil {
+		return "unavailable"
+	}
+	total := len(m.Symbols())
+	current := len(m.MembersOn(market.NewDay(time.Now())))
+	return fmt.Sprintf("sp500: %d names, %d current, from %s", total, current, m.Earliest)
 }
 
 func cmdCache(args []string) error {
@@ -885,5 +971,51 @@ func cmdIngestIndex(args []string) error {
 	fmt.Fprintf(os.Stderr, "\n%d current constituents, %d recorded changes\n", len(current), len(changes))
 	fmt.Fprintf(os.Stderr, "%d tenures, of which %d have ended — those are the names a\n", len(tenures), dropped)
 	fmt.Fprintf(os.Stderr, "survivorship-biased universe silently drops.\n")
+	return nil
+}
+
+// cmdExamples lists the strategies bundled into the binary.
+func cmdExamples(args []string) error {
+	fs := flag.NewFlagSet("examples", flag.ContinueOnError)
+	show := fs.String("show", "", "print one example's source instead of listing")
+	asJSON := fs.Bool("json", false, "print the list as JSON")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	// `natural-quant examples golden-cross` should do the obvious thing.
+	if *show == "" && len(fs.Args()) > 0 {
+		*show = fs.Arg(0)
+	}
+
+	if *show != "" {
+		ex, err := examples.Get(*show)
+		if err != nil {
+			return err
+		}
+		fmt.Print(ex.Code)
+		return nil
+	}
+
+	all := examples.All()
+	if *asJSON {
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		return enc.Encode(all)
+	}
+
+	fmt.Printf("Bundled strategies. Each one runs with no API key and no setup:\n\n")
+	const indent = "      "
+	for _, ex := range all {
+		fmt.Printf("  %s\n", ex.Name)
+		fmt.Printf("%s%s\n", indent, wrapIndent(ex.Title, 70, indent))
+		if ex.NeedsModel {
+			fmt.Printf("%s(needs a model: it calls one inside the backtest)\n", indent)
+		}
+		fmt.Println()
+	}
+	fmt.Printf("Run one          natural-quant run --example golden-cross\n")
+	fmt.Printf("Read the code    natural-quant examples golden-cross\n")
+	fmt.Printf("Search its space natural-quant sweep --example golden-cross\n")
+	fmt.Printf("Full report      natural-quant report --example golden-cross --out report.md\n")
 	return nil
 }

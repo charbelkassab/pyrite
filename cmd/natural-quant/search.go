@@ -15,6 +15,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/charbelkassab/natural-quant/examples"
 	"github.com/charbelkassab/natural-quant/internal/app"
 	"github.com/charbelkassab/natural-quant/internal/engine"
 	"github.com/charbelkassab/natural-quant/internal/market"
@@ -58,10 +59,12 @@ func addCommonSearchFlags(fs *flag.FlagSet) (params *paramFlags, objective, csvP
 }
 
 // addCodeFileFlags registers the compiler bypass shared by both commands.
-func addCodeFileFlags(fs *flag.FlagSet) (codeFile *string, warmup *int) {
+func addCodeFileFlags(fs *flag.FlagSet) (codeFile *string, warmup *int, example *string) {
 	codeFile = fs.String("code-file", "",
 		"run this JavaScript strategy instead of compiling a prompt")
 	warmup = fs.Int("warmup", 0, "bars of history to load before the start date")
+	example = fs.String("example", "",
+		"search a bundled example; `natural-quant examples` lists them")
 	return
 }
 
@@ -106,7 +109,7 @@ func cmdSweep(args []string) error {
 	fs := flag.NewFlagSet("sweep", flag.ContinueOnError)
 	params, objective, csvPath, workers, maxCombos, cash, from, to, universe, benchmark, offline, asJSON :=
 		addCommonSearchFlags(fs)
-	codeFile, warmup := addCodeFileFlags(fs)
+	codeFile, warmup, example := addCodeFileFlags(fs)
 	top := fs.Int("top", 15, "how many rows to print")
 	heatmap := fs.Bool("heatmap", true, "draw the parameter surface when two or more vary")
 
@@ -115,16 +118,16 @@ func cmdSweep(args []string) error {
 		return err
 	}
 	prompt = strings.TrimSpace(strings.Join(append([]string{prompt}, fs.Args()...), " "))
-	if prompt == "" && *codeFile == "" {
+	if prompt == "" && *codeFile == "" && *example == "" {
 		return fmt.Errorf("describe a strategy, for example:\n" +
 			"  natural-quant sweep \"buy SPY when the fast average crosses the slow one\"\n" +
-			"  or pass --code-file strategy.js")
+			"  or --code-file strategy.js, or --example golden-cross")
 	}
 
 	s, err := prepareSearch(fs, prompt, searchOpts{
 		offline: offline, cash: *cash, from: *from, to: *to,
 		universe: *universe, benchmark: *benchmark,
-		codeFile: *codeFile, warmup: *warmup,
+		codeFile: *codeFile, warmup: *warmup, example: *example,
 	})
 	if err != nil {
 		return err
@@ -166,7 +169,7 @@ func cmdWalkForward(args []string) error {
 	fs := flag.NewFlagSet("walkforward", flag.ContinueOnError)
 	params, objective, csvPath, workers, maxCombos, cash, from, to, universe, benchmark, offline, asJSON :=
 		addCommonSearchFlags(fs)
-	codeFile, warmup := addCodeFileFlags(fs)
+	codeFile, warmup, example := addCodeFileFlags(fs)
 	train := fs.Int("train", 504, "training window in trading sessions")
 	test := fs.Int("test", 126, "test window in trading sessions")
 	embargo := fs.Int("embargo", -1, "sessions dropped between train and test (default: the strategy's warm-up)")
@@ -177,16 +180,16 @@ func cmdWalkForward(args []string) error {
 		return err
 	}
 	prompt = strings.TrimSpace(strings.Join(append([]string{prompt}, fs.Args()...), " "))
-	if prompt == "" && *codeFile == "" {
+	if prompt == "" && *codeFile == "" && *example == "" {
 		return fmt.Errorf("describe a strategy, for example:\n" +
 			"  natural-quant walkforward \"momentum rotation over the top 3 tech names\"\n" +
-			"  or pass --code-file strategy.js")
+			"  or --code-file strategy.js, or --example golden-cross")
 	}
 
 	s, err := prepareSearch(fs, prompt, searchOpts{
 		offline: offline, cash: *cash, from: *from, to: *to,
 		universe: *universe, benchmark: *benchmark,
-		codeFile: *codeFile, warmup: *warmup,
+		codeFile: *codeFile, warmup: *warmup, example: *example,
 	})
 	if err != nil {
 		return err
@@ -229,6 +232,7 @@ type searchOpts struct {
 	// how you iterate on code you have already generated and hand-edited.
 	codeFile string
 	warmup   int
+	example  string
 }
 
 // prepareSearch compiles the prompt and builds the base spec both search
@@ -266,6 +270,28 @@ func prepareSearch(fs *flag.FlagSet, prompt string, o searchOpts) (*searchSetup,
 	}
 	opts.ApplyDefaults()
 
+	if o.example != "" {
+		ex, err := examples.Get(o.example)
+		if err != nil {
+			stop()
+			return nil, err
+		}
+		if len(opts.Universe) == 0 && len(ex.Universe) > 0 {
+			opts.Universe = market.ResolveUniverse(strings.Join(ex.Universe, ","))
+			opts.Index = market.IndexUniverse(strings.Join(ex.Universe, ","))
+		}
+		plan := &strategy.Plan{
+			Name: firstNonEmpty(ex.Title, ex.Name), Description: ex.Summary,
+			Code: ex.Code, Universe: ex.Universe, Benchmarks: ex.Benchmarks,
+			Warmup: ex.Warmup, AllowShort: ex.AllowShort,
+		}
+		spec := app.BuildSpec(plan, "", opts)
+		if o.warmup > 0 {
+			spec.Warmup = o.warmup
+		}
+		return &searchSetup{app: a, plan: plan, spec: spec, ctx: ctx, cancel: stop}, nil
+	}
+
 	if o.codeFile != "" {
 		code, err := os.ReadFile(o.codeFile)
 		if err != nil {
@@ -285,8 +311,12 @@ func prepareSearch(fs *flag.FlagSet, prompt string, o searchOpts) (*searchSetup,
 
 	if !a.Cfg.AnyProviderEnabled() {
 		stop()
-		return nil, fmt.Errorf("no model API key found. Set OPENAI_API_KEY, CEREBRAS_API_KEY or KIMI_API_KEY,\n" +
-			"  or pass --code-file to run a strategy you already have")
+		return nil, fmt.Errorf("compiling plain English needs a model, and none is configured.\n\n" +
+			"  Search a bundled strategy instead — it needs nothing:\n" +
+			"    natural-quant sweep --example golden-cross\n\n" +
+			"  Or turn compilation on:\n" +
+			"    free   — install Ollama, then: ollama pull qwen2.5-coder:7b\n" +
+			"    hosted — export OPENAI_API_KEY, CEREBRAS_API_KEY or KIMI_API_KEY")
 	}
 
 	fmt.Fprintf(os.Stderr, "compiling strategy with %s...\n", a.DescribeRoutes())
@@ -557,6 +587,16 @@ func writeFoldsCSV(path string, res *engine.WalkForwardResult) error {
 	return w.Error()
 }
 
+// firstNonEmpty returns the first non-empty string.
+func firstNonEmpty(vals ...string) string {
+	for _, v := range vals {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
 // num formats a float for CSV, leaving undefined values empty rather than
 // writing NaN, which most spreadsheets read as text.
 func num(v float64) string {
@@ -571,7 +611,7 @@ func cmdImprove(args []string) error {
 	fs := flag.NewFlagSet("improve", flag.ContinueOnError)
 	_, objective, csvPath, workers, maxCombos, cash, from, to, universe, benchmark, offline, asJSON :=
 		addCommonSearchFlags(fs)
-	codeFile, warmup := addCodeFileFlags(fs)
+	codeFile, warmup, example := addCodeFileFlags(fs)
 	budget := fs.Int("budget", 6, "how many candidates to try")
 	holdout := fs.Float64("holdout", 0.3, "fraction of the period withheld from the search")
 	sweepParams := fs.Bool("sweep-params", true, "also search each candidate's declared parameters")
@@ -582,17 +622,17 @@ func cmdImprove(args []string) error {
 		return err
 	}
 	prompt = strings.TrimSpace(strings.Join(append([]string{prompt}, fs.Args()...), " "))
-	if prompt == "" && *codeFile == "" {
+	if prompt == "" && *codeFile == "" && *example == "" {
 		return fmt.Errorf("describe a strategy to improve, for example:\n" +
 			"  natural-quant improve \"a golden cross on SPY\"\n" +
-			"  or pass --code-file strategy.js")
+			"  or --code-file strategy.js, or --example golden-cross")
 	}
 	_ = csvPath
 
 	s, err := prepareSearch(fs, prompt, searchOpts{
 		offline: offline, cash: *cash, from: *from, to: *to,
 		universe: *universe, benchmark: *benchmark,
-		codeFile: *codeFile, warmup: *warmup,
+		codeFile: *codeFile, warmup: *warmup, example: *example,
 	})
 	if err != nil {
 		return err
@@ -681,7 +721,7 @@ func cmdReport(args []string) error {
 	fs := flag.NewFlagSet("report", flag.ContinueOnError)
 	params, objective, _, workers, maxCombos, cash, from, to, universe, benchmark, offline, asJSON :=
 		addCommonSearchFlags(fs)
-	codeFile, warmup := addCodeFileFlags(fs)
+	codeFile, warmup, example := addCodeFileFlags(fs)
 	out := fs.String("out", "", "write the report here instead of stdout")
 	skipSweep := fs.Bool("no-sweep", false, "skip the parameter search")
 	skipWF := fs.Bool("no-walkforward", false, "skip the walk-forward evaluation")
@@ -693,14 +733,14 @@ func cmdReport(args []string) error {
 		return err
 	}
 	prompt = strings.TrimSpace(strings.Join(append([]string{prompt}, fs.Args()...), " "))
-	if prompt == "" && *codeFile == "" {
+	if prompt == "" && *codeFile == "" && *example == "" {
 		return fmt.Errorf("describe a strategy to report on, or pass --code-file")
 	}
 
 	s, err := prepareSearch(fs, prompt, searchOpts{
 		offline: offline, cash: *cash, from: *from, to: *to,
 		universe: *universe, benchmark: *benchmark,
-		codeFile: *codeFile, warmup: *warmup,
+		codeFile: *codeFile, warmup: *warmup, example: *example,
 	})
 	if err != nil {
 		return err

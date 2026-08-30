@@ -3,6 +3,10 @@
 // Market cap is computed as raw close x point-in-time shares outstanding. See
 // docs/limitations.md — that share-count table is approximate, and it is the
 // main source of error in this strategy.
+//
+// universe: megacap
+// benchmarks: SPY
+// warmup: 10
 
 function setup(ctx) {
   ctx.universe("megacap");

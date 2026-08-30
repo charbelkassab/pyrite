@@ -289,7 +289,12 @@ func (c *Client) post(ctx context.Context, p *config.Provider, path string, payl
 		return nil, 0, err
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("Authorization", "Bearer "+p.APIKey)
+	// Only send an Authorization header when there is something to send. A
+	// local runtime has no key, and "Bearer " with nothing after it is a
+	// malformed credential that some servers reject outright.
+	if p.APIKey != "" {
+		httpReq.Header.Set("Authorization", "Bearer "+p.APIKey)
+	}
 
 	resp, err := c.http.Do(httpReq)
 	if err != nil {
@@ -311,6 +316,11 @@ func (c *Client) resolve(req Request) (*config.Provider, error) {
 			return nil, fmt.Errorf("unknown provider %q", req.Provider)
 		}
 		if !p.Enabled {
+			if p.Local {
+				return nil, fmt.Errorf("nothing is answering at %s. Start %s, or set "+
+					"NQ_%s_BASE_URL if it listens elsewhere", p.BaseURL, p.Name,
+					strings.ToUpper(p.Name))
+			}
 			return nil, fmt.Errorf("provider %q has no API key configured", req.Provider)
 		}
 		return p, nil
@@ -359,7 +369,9 @@ func (c *Client) ListModels(ctx context.Context, providerName string) ([]ModelIn
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Authorization", "Bearer "+p.APIKey)
+	if p.APIKey != "" {
+		req.Header.Set("Authorization", "Bearer "+p.APIKey)
+	}
 
 	resp, err := c.http.Do(req)
 	if err != nil {
