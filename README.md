@@ -42,18 +42,24 @@ pyrite run --example golden-cross
 ```
 
 ```
+Golden cross
 Classic 50/200 moving average crossover with a trailing stop.
 
 2018-01-02 to 2023-12-29   1509 trading days   universe of 1
 
+  Starting capital          $100,000.00
+  Final value               $174,490.02
   Total return                   74.49%
   Annualised (CAGR)               9.74%
+  Volatility                     10.71%
   Sharpe ratio                     0.92
+  Sortino ratio                    0.65
   Max drawdown                  -16.07%
+  Trades                              2
+  Trade win rate                100.00%
+  Costs paid                    $303.36
 
-  Comparison               Total return   Max drawdown
-  Classic 50/200 moving…         74.49%        -16.07%
-  State Street SPDR S&P…         95.54%        -33.72%
+  ... round trips, attribution and rolling statistics ...
 
 How much should you believe this?  50/100
 
@@ -65,8 +71,12 @@ How much should you believe this?  50/100
   STOP this is short volatility in disguise
         Returns are left-skewed (-0.74) with fat tails (excess kurtosis
         5.0): many small gains and occasional large losses. Sharpe flatters
-        this shape badly, because the risk it measures is not the risk
-        being taken.
+        this shape badly, because the risk it measures is not the risk being
+        taken.
+
+  Comparison               Total return   Max drawdown
+  Golden cross                   74.49%        -16.07%
+  State Street SPDR S&P…         95.54%        -33.72%
 ```
 
 **That last section is the product.** The equity curve is table stakes.
@@ -174,21 +184,29 @@ Everything in [Try it](#try-it-in-30-seconds) above. A curve, the trade-level
 detail behind it, and a critique that reads the result and names the problems.
 
 Add `--cost-scan` to re-run at 0, 5, 20 and 50 bps of slippage. On a
-high-turnover strategy the difference is not subtle:
+high-turnover strategy the difference is not subtle — here is a daily reversal
+that looks like one of the best strategies you have ever seen, until it has to
+pay to trade:
 
 ```
+$ pyrite run --example daily-reversal --from 2018-01-02 --cost-scan
+
 How much survives friction?
   Slippage             Return         CAGR       Sharpe      Costs
-  0 bps                51.81%        7.22%         0.57      $0.00
-  5 bps               -27.47%       -5.22%        -0.32 $65,100.06
-  20 bps              -92.12%      -34.60%        -3.00 $107,636.50
+  0 bps               326.95%       27.43%         0.85      $0.00
+  5 bps                17.17%        2.68%         0.25 $208,926.55
+  20 bps              -97.63%      -46.49%        -1.56 $173,300.37
+  50 bps             -100.00%      -85.66%        -5.21 $114,952.45
 
-  Break-even slippage                   3.3 bps
+  Break-even slippage                   7.2 bps
 
-  the edge disappears below 5 bps of slippage — less than this tool
-  charges by default, and far less than a retail account pays. This is a
-  costs artefact, not a strategy
+  the edge breaks even at around 7.2 bps of slippage. That is inside the
+  range a real account would pay on anything but the most liquid names
 ```
+
+**+327% gross, −97.6% at 20 bps.** The strategy replaces its whole book every
+session, so the entire result was the spread it never paid. A backtester that
+defaults slippage to zero shows you the first row and stops.
 
 <br>
 
@@ -202,7 +220,7 @@ pyrite sweep --example golden-cross --from 2015-01-05
 ```
 
 ```
-160 combinations in 955ms, ranked by sharpe
+160 combinations, ranked by sharpe
 
                                   sharpe     return   drawdown     trades    win%
   fast=50 slow=150 trail=0.12       0.89    128.85%    -15.99%          6  83.33%
@@ -227,9 +245,16 @@ How much of this is real?
   Best sharpe                             0.888
   Median sharpe                           0.652
   Expected best from luck alone           0.426
+  Combinations above zero               100.00%
   Neighbour support                      82.51%
-  Prob. of backtest overfitting          81.43%   (70 splits)
+  Prob. of backtest overfitting          77.14%   (70 splits)
   Deflated Sharpe                        91.09%
+
+  best sharpe 0.89 against 0.43 expected from luck alone over 160 trials;
+  the winner sits on a broad plateau (neighbours average 83% of its score),
+  which is what a real edge looks like; probability of backtest overfitting
+  is 77% — selecting on this sample carries no information about the next
+  one
 ```
 
 A heatmap is the fastest overfitting detector ever built — one bright cell in a
@@ -252,9 +277,11 @@ instantly. The statistics put numbers on it:
 
 ### 3. `walkforward` — choose on one period, report on the next
 
-The sweep above says the winner sits on a *broad plateau* — the shape of a real
-edge. Here is what happens when that plateau has to survive contact with data
-it was not chosen on.
+The sweep above returned a split verdict: the winner sits on a *broad plateau*,
+"what a real edge looks like", but a 77% probability of overfitting says
+choosing on that sample tells you nothing about the next one. Those two claims
+cannot both be right. Here is the tiebreak — the plateau meeting data it was
+not chosen on.
 
 ```bash
 pyrite walkforward --example golden-cross --train 500 --test 150
@@ -266,6 +293,7 @@ Stitched out-of-sample equity — the only curve here that was never fitted to
   Annualised (CAGR)                      -0.34%
   Sharpe ratio                            -0.06
   Max drawdown                          -10.65%
+  Ulcer index                             5.05%
 
   Mean in-sample return                  21.86%
   Mean out-of-sample return              -0.17%
@@ -279,9 +307,11 @@ Stitched out-of-sample equity — the only curve here that was never fitted to
   re-optimisations, so the strategy does not have a stable optimum
 ```
 
-**+21.9% in sample, −0.2% out of it.** The plateau was real and it did not
-transfer. That gap is the single most useful number in this document, and no
-amount of staring at an equity curve produces it.
+**+21.9% in sample, −0.2% out of it, and 3 of 20 windows positive.** The
+plateau was real and it did not transfer; the overfitting statistic was right
+and the shape of the surface was misleading. That gap is the single most useful
+number in this document, and no amount of staring at an equity curve produces
+it.
 
 Parameters are chosen on each training window and applied unchanged to the
 window that follows, with an embargo between them so a 200-day indicator cannot
@@ -313,13 +343,26 @@ So the harness, not the model, owns the data:
 Searched 2018-01-02 to 2022-03-04. Held back 2022-03-07 to 2023-12-29.
 The holdout was not visible during the search and was scored once, at the end.
 
+  #      return       CAGR   drawdown   trust  what changed
+  1     ...            ...        ...     ...  baseline
+  2     ...            ...        ...     ...  widened the exit band
+* 3     ...            ...        ...     ...  added a regime filter
+  ...
+
 The winner, on data the search never saw
                                 training        holdout
-  Total return                     84.10%         11.62%
-  Annualised (CAGR)                16.02%          6.71%
-  Sharpe ratio                       1.31           0.54
-  Surviving fraction                          41.88%
+  Total return                        ...            ...
+  Annualised (CAGR)                   ...            ...
+  Sharpe ratio                        ...            ...
+  Max drawdown                        ...            ...
+  Surviving fraction                             ...
 ```
+
+Both columns are always shown together, and **surviving fraction** — how much
+of the training result the holdout kept — is the number to read first. This is
+the one command here that needs a model, so the figures depend on which one you
+point it at; every other output on this page was produced by running the
+command shown above it.
 
 The model is handed the *critique* of each attempt rather than raw numbers, so
 it can act on a stated fault — "only 12 closed trades", "short volatility in
@@ -543,8 +586,12 @@ optimistic.
 splits and dividends, cash drag, next-open fills, and — with `--impact 1` —
 market impact under the square-root law, so a large order pays for the
 liquidity it demands. That last one changes results more than anything else
-here: the same high-turnover strategy returns **−10% on $100,000 and −72% on
+here: the daily reversal above returns **−14.6% on $100,000 and −99.6% on
 $1bn**, purely because the second has to move the market to get filled.
+
+```bash
+pyrite run --example daily-reversal --impact 1 --cash 1000000000
+```
 
 ---
 
@@ -565,6 +612,8 @@ Click any day for the full audit trail of that session — what was bought and
 sold and *why*, every open position with its weight and unrealised P&L, the
 strategy's own log lines, and the exact prompt and reply if it consulted a
 model.
+
+![The day-detail panel: fills with their reasons, open positions and the strategy's log](docs/images/screenshot-day.png)
 
 The **Trust** tab lists what is wrong with each result. The **Search** tab runs
 the parameter space and draws the surface.
