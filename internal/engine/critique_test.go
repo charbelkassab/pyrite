@@ -239,3 +239,65 @@ func TestConcentrationIsReportedOnce(t *testing.T) {
 		t.Errorf("the strongest concentration should be the one reported: %q", detail)
 	}
 }
+
+// A run with no fills has nothing in it to assess. Scoring it by subtracting a
+// fixed penalty from 100 put an empty result above a real one with two flaws,
+// which inverts the whole point of the number.
+func TestNeverTradedScoresZero(t *testing.T) {
+	res := &Result{
+		Curve:   curveOf(100, 100, 100),
+		Metrics: Metrics{TradingDays: 500, Years: 2},
+	}
+	c := Criticise(res)
+	if c.TrustScore != 0 {
+		t.Errorf("a run that never traded scored %d, want 0", c.TrustScore)
+	}
+	var found bool
+	for _, f := range c.Findings {
+		if f.Title == "the strategy never traded" {
+			found = true
+			if f.Severity != SeverityCritical {
+				t.Errorf("severity = %q, want critical", f.Severity)
+			}
+		}
+	}
+	if !found {
+		t.Error("no finding said the strategy never traded")
+	}
+}
+
+// A year that returned exactly zero did not lose money. Counting "not
+// positive" as "negative" told a strategy that never traded that most of its
+// years lost money, when none of them did.
+func TestFlatYearsAreNotLosingYears(t *testing.T) {
+	res := &Result{
+		Curve:   curveOf(100, 100, 100),
+		Metrics: Metrics{TradingDays: 800, Years: 3},
+		Attribution: Attribution{ByYear: []PeriodStats{
+			{Label: "2021", Return: 0},
+			{Label: "2022", Return: 0},
+			{Label: "2023", Return: 0},
+		}},
+	}
+	for _, f := range Criticise(res).Findings {
+		if f.Title == "most years lost money" {
+			t.Errorf("a flat curve was reported as losing money: %s", f.Detail)
+		}
+	}
+
+	// A genuinely losing run must still be caught.
+	res.Attribution.ByYear = []PeriodStats{
+		{Label: "2021", Return: -0.10},
+		{Label: "2022", Return: -0.05},
+		{Label: "2023", Return: 0.02},
+	}
+	var found bool
+	for _, f := range Criticise(res).Findings {
+		if f.Title == "most years lost money" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("two losing years out of three went unreported")
+	}
+}

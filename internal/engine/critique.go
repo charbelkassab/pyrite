@@ -55,6 +55,9 @@ func Criticise(res *Result) Critique {
 	add := func(sev Severity, title, format string, args ...any) {
 		c.Findings = append(c.Findings, Finding{sev, title, fmt.Sprintf(format, args...)})
 	}
+	// Set when the run produced nothing to assess, which floors the score
+	// rather than discounting it.
+	noResult := false
 	m := res.Metrics
 
 	// --- Is there enough evidence to be talking about this at all? -------
@@ -67,6 +70,11 @@ func Criticise(res *Result) Critique {
 		add(SeverityCritical, "the strategy never traded",
 			"No orders were filled across %d sessions. Usually the warm-up exceeds the "+
 				"data, or an entry condition is never satisfied.", m.TradingDays)
+		// This one is disqualifying rather than merely bad. Every other
+		// finding reduces confidence in a result; this one says there is no
+		// result to have confidence in, and subtracting a fixed penalty from
+		// 100 would score an empty run above a real one with two flaws.
+		noResult = true
 	}
 	if m.Years < 2 && m.Years > 0 {
 		add(SeverityWarning, "short test period",
@@ -108,21 +116,28 @@ func Criticise(res *Result) Critique {
 			worstStress.ShareOfTotal*100, worstStress.Label)
 	}
 	if len(res.Attribution.ByYear) >= 3 {
-		var positive int
+		var positive, negative int
 		worst := res.Attribution.ByYear[0]
 		for _, y := range res.Attribution.ByYear {
-			if y.Return > 0 {
+			switch {
+			case y.Return > 0:
 				positive++
+			case y.Return < 0:
+				negative++
 			}
 			if y.Return < worst.Return {
 				worst = y
 			}
 		}
 		total := len(res.Attribution.ByYear)
-		if float64(positive)/float64(total) < 0.5 {
+		// Counting "not positive" as "lost money" makes a flat year a losing
+		// one, so a strategy that never traded gets told most of its years
+		// lost money when none of them did.
+		if negative > 0 && float64(positive)/float64(total) < 0.5 {
 			add(SeverityWarning, "most years lost money",
-				"Only %d of %d calendar years finished positive. A good total return "+
-					"built from a minority of good years is a timing bet.", positive, total)
+				"%d of %d calendar years finished negative and only %d finished "+
+					"positive. A good total return built from a minority of good "+
+					"years is a timing bet.", negative, total, positive)
 		}
 		if worst.Return < -0.25 {
 			add(SeverityNote, "one very bad year",
@@ -275,6 +290,9 @@ func Criticise(res *Result) Critique {
 		c.Headline = "nothing obviously wrong, which is not the same as right"
 	}
 	c.TrustScore = trustScore(c.Findings)
+	if noResult {
+		c.TrustScore = 0
+	}
 	return c
 }
 
