@@ -37,6 +37,13 @@ smoke: build ## What a new user does in their first five minutes
 	./$(BINARY) run --example golden-cross --offline --from 2019-01-02 --to 2023-12-29
 	./$(BINARY) sweep --example sixty-forty --offline --from 2019-01-02 --to 2023-12-29 --top 3
 	./$(BINARY) report --example mean-reversion --offline --from 2019-01-02 --to 2023-12-29 --out /tmp/pyrite-report.md
+# --code-file is a different path from --example: it carries no universe of
+# its own, so the strategy's setup() is the only thing that names one. Every
+# search command once rejected this shape with "empty universe: nothing to
+# trade" while the identical strategy ran fine under --example, and the smoke
+# test did not notice because it only ever used --example.
+	./$(BINARY) sweep --code-file examples/golden-cross.js --offline --from 2019-01-02 --to 2023-12-29 --top 3
+	./$(BINARY) walkforward --code-file examples/golden-cross.js --offline --from 2015-01-02 --to 2023-12-29 --train 400 --test 120
 	./$(BINARY) doctor
 
 .PHONY: docker
