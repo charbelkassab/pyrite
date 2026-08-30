@@ -163,19 +163,35 @@ skip them rather than guessing.
 
 ### Lookahead bias in AI and web strategies
 
-This one is severe and worth understanding precisely.
+This one is severe and worth understanding precisely. Part of it is now fixed;
+the rest is not, and the difference matters.
 
-`ctx.web()` and `ctx.news()` query the live internet. When you backtest a
-news-reading strategy over 2019, the search returns *today's* internet — articles
-written years after the simulated date, indexed by relevance to what turned out to
-matter. A strategy that "reads the news and decides" is, in a 2019 backtest,
-reading a summary of what already happened.
+**`ctx.news()` is point-in-time.** It queries an article index with an explicit
+publication-date window ending at the simulated day, so a strategy standing on
+4 March 2019 sees what had been published by 4 March 2019 and nothing after it.
+There is no fallback to a live feed when that window is empty: substituting
+today's internet would reintroduce the exact bias this removes, and do it
+invisibly — the strategy would read plausible headlines and never know they
+were written afterwards. An empty answer is the correct answer to "what was
+published that week" when nothing was indexed.
 
-`ctx.ai()` has a subtler version: the model's training data includes everything
-after your simulated date. Ask it "is the outlook for this company positive?" in a
-2020 backtest and it answers with knowledge of 2021–2026.
+Its own limits: the index reaches back a few years rather than decades,
+coverage of any given company varies, and relevance ranking is the index's
+rather than a contemporary reader's — a story that mattered later may rank
+above one that mattered at the time. Set `PYRITE_NEWS_PROVIDER=live` to opt
+back into today's internet, or `none` to refuse news entirely.
 
-pyrite does not prevent this — it cannot. What it does instead:
+**`ctx.web()` is not.** General web search returns the internet as it is now.
+A backtest over 2019 that calls it is seeing 2026 information, indexed by
+relevance to what turned out to matter.
+
+**`ctx.ai()` has a subtler version** that survives even point-in-time news: the
+model's training data includes everything after your simulated date. Ask it "is
+the outlook for this company positive?" in a 2020 backtest and it answers with
+knowledge of 2021–2026. Handing it correctly dated headlines narrows this but
+does not close it — it still knows how the story ended, and the run says so.
+
+pyrite cannot prevent the two that remain. What it does instead:
 
 - Records every model and web call against the day it was made, visible in the
   day-detail panel, so you can see exactly what the strategy was told.
@@ -238,14 +254,14 @@ trusting the result: the assumptions often *are* the strategy.
 
 | Ask | Why not |
 | --- | --- |
-| Anything intraday — "buy at 10am", "sell on a 5 minute breakout" | The engine is daily-bar only |
+| Intraday history longer than about two months | Free intraday data does not reach further back |
 | Options, spreads, covered calls | No options data or pricing model |
 | "Buy companies with a P/E under 15", earnings surprises, revenue growth | No fundamentals beyond share counts |
 | Futures roll, continuous contracts | Not modelled |
 | Order-book, bid/ask spread, level 2 | Not available in daily bars |
 | "Rebalance when my broker charges under $X" | No broker integration; costs are a model |
-| Point-in-time index membership — "the S&P 500 as it was in 2012" | Universes are current-membership only |
-| Anything needing per-name news history at a past date | Search returns today's internet |
+| Point-in-time membership for an index other than the S&P 500 | Only the S&P 500 has a reconstructed table |
+| General web search at a past date (`ctx.web()`) | Only news is date-bounded; web search returns today's internet |
 
 When a request touches one of these, the compiler is instructed to implement
 the closest daily-bar approximation and state the gap under **Limitations** in

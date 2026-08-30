@@ -346,13 +346,21 @@ else if (/SELL/i.test(verdict)) ctx.setWeight("SPY", 0);
 Answers are cached per `(day, prompt)`, so the first run pays for the calls and
 every later run is free and returns identical answers.
 
-**Read this before writing an AI or web strategy.** `ctx.web()` and
-`ctx.news()` query the internet *as it is now*, not as it was on the simulated
-day. A backtest over 2019 that searches the web is seeing 2026 information.
-That is lookahead bias and it will flatter results, sometimes enormously.
-`ctx.ai()` has a milder version of the same problem: the model knows what
-happened after the simulated date. Treat AI-driven backtests as illustrations
-of a mechanism, not as evidence that a strategy works.
+**Read this before writing an AI or web strategy.**
+
+`ctx.news()` is point-in-time: it searches an article index with a publication
+window ending at the simulated day, so a strategy standing on 4 March 2019 sees
+what had been published by then and nothing after it. Prefer it over
+`ctx.web()` for anything a strategy trades on.
+
+`ctx.web()` is not point-in-time. It queries the internet *as it is now*, so a
+backtest over 2019 that searches the web is seeing 2026 information. That is
+lookahead bias and it will flatter results, sometimes enormously.
+
+`ctx.ai()` has a milder version that survives even dated headlines: the model
+was trained on text written after the simulated date, so it knows how the story
+ended. Treat AI-driven backtests as illustrations of a mechanism, not as
+evidence that a strategy works.
 
 ## Bar sizes
 

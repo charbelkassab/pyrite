@@ -3,7 +3,13 @@ requires = ["setuptools>=61"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "pyrite"
+# The distribution name is not "pyrite" because that name is already taken on
+# PyPI by an unrelated project. The import name stays `pyrite`, so the code a
+# user writes is unaffected:
+#
+#	pip install pyrite-quant
+#	from pyrite import Client
+name = "pyrite-quant"
 version = "0.1.0"
 description = "Python client for pyrite: plain-English trading strategies, backtested honestly."
 readme = "README.md"

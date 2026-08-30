@@ -580,7 +580,7 @@ JavaScript, no build step.
 ## From Python
 
 ```bash
-pip install pyrite
+pip install pyrite-quant     # the distribution; `import pyrite` either way
 ```
 
 ```python

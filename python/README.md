@@ -6,7 +6,7 @@ so a notebook drives the same engine as the CLI and the web interface and the
 two can never disagree about what a backtest means.
 
 ```bash
-pip install pyrite          # the client
+pip install pyrite-quant    # the client (imports as `pyrite`)
 # and the binary itself:
 go install github.com/charbelkassab/pyrite/cmd/pyrite@latest
 ```

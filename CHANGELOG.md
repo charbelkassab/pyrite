@@ -58,6 +58,14 @@ the CLI flags may all move.
 - **Share counts from SEC filings.** `pyrite ingest edgar` builds the
   market-cap table from XBRL company facts — 8,473 rows across 290 symbols,
   each citing its accession number, dated by filing rather than by cover date.
+- **Point-in-time news.** `ctx.news()` queries an article index with an
+  explicit publication-date window ending at the simulated day, so a strategy
+  standing on 4 March 2019 sees what had been published by then and nothing
+  after it. There is no fallback to a live feed when the window is empty:
+  substituting today's internet would reintroduce exactly the bias this
+  removes, invisibly. `PYRITE_NEWS_PROVIDER` selects `gdelt` (the default),
+  `live` or `none`. `ctx.web()` remains a look at today's internet and still
+  raises a critical finding.
 - **Economic series with publication lag.** `ctx.fred()` reads St. Louis Fed
   data as of the simulated day, accounting for how late each figure was
   actually published.
@@ -91,6 +99,9 @@ the CLI flags may all move.
 
 ### Fixed
 
+- The walk-forward verdict printed a bare ratio ("efficiency -0.01") beside a
+  table reporting the same quantity as "-0.78%", which read as two different
+  measurements.
 - A NaN in a score field truncated entire API responses: a 200 with an empty
   body and no error anywhere.
 - One `--offline` run poisoned the market cache with synthetic prices, which
