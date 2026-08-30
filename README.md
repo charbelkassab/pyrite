@@ -541,25 +541,48 @@ A strategy is two functions. The model writes against the same document you
 can read (`pyrite api`).
 
 ```js
+// This is examples/golden-cross.js — the strategy every number above came from.
+
 function setup(ctx) {
-  ctx.universe("sp500");                                  // point-in-time membership
-  ctx.param("fast", 50,  { grid: [20, 35, 50, 65, 80] }); // declared, so it can be searched
+  ctx.universe(["SPY"]);
+
+  // Every number this strategy depends on is declared rather than written
+  // inline, so `pyrite sweep` can search the space around it instead of
+  // testing the one point someone happened to pick.
+  ctx.param("fast", 50, { grid: [20, 35, 50, 65, 80] });
   ctx.param("slow", 200, { grid: [100, 150, 200, 250] });
-  ctx.warmup(270);                                        // the largest value the grids reach
+  ctx.param("trail", 0.12, { min: 0.06, max: 0.20, step: 0.02 });
+
+  // Warm-up comes from the largest value the slow grid can take, not from
+  // its default: 200 bars would leave the 250 setting untradeable.
+  ctx.warmup(270);
 }
 
 function onDay(ctx) {
   const fast = ctx.sma("SPY", ctx.params.fast);
   const slow = ctx.sma("SPY", ctx.params.slow);
-  if (fast === null || slow === null) return;             // indicators return null, always guard
+  if (fast === null || slow === null) return;   // indicators return null, always guard
 
-  if (fast > slow && !ctx.hasPosition("SPY")) {
-    ctx.buy("SPY", { pctCash: 1, trailingStop: 0.12 }, "50d crossed above 200d");
-  } else if (fast < slow && ctx.hasPosition("SPY")) {
+  // Detect the *crossing*, not the condition. "fast > slow" is true on every
+  // day of a trend; a crossover strategy should act only on the day it
+  // becomes true.
+  const above = fast > slow;
+  const wasAbove = ctx.state.above;
+  ctx.state.above = above;
+  if (wasAbove === undefined) return;
+
+  if (above && !wasAbove) {
+    ctx.buy("SPY", { pctCash: 1, trailingStop: ctx.params.trail }, "50d crossed above 200d");
+  } else if (!above && wasAbove && ctx.hasPosition("SPY")) {
     ctx.close("SPY", "50d crossed below 200d");
   }
 }
 ```
+
+
+Swap `ctx.universe(["SPY"])` for `ctx.universe("sp500")` and the same two
+functions run against whatever the index actually held on each simulated day,
+failures included.
 
 **Every number is declared, not written inline.** A number written inline can
 only ever be tested at the value it was written at. Declaring it is what lets
