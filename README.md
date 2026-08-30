@@ -82,7 +82,7 @@ How much should you believe this?  50/100
 **That last section is the product.** The equity curve is table stakes.
 
 ```bash
-pyrite examples                  # seven bundled strategies, all runnable
+pyrite examples                  # eight bundled strategies, all runnable
 pyrite serve --offline --open    # the web app, on synthetic data
 pyrite doctor                    # what works right now, and how to fix the rest
 ```

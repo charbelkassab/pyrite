@@ -84,8 +84,8 @@ the CLI flags may all move.
   drop-the-best-month and drop-the-best-five-days stress tests.
 - Portfolio construction: minimum variance, maximum Sharpe, risk parity,
   hierarchical risk parity and inverse volatility, with Ledoit–Wolf shrinkage.
-- Market impact under the square-root law. The same strategy returns -10% on
-  $100,000 and -72% on $1bn.
+- Market impact under the square-root law. The `daily-reversal` example
+  returns -14.6% on $100,000 and -99.6% on $1bn.
 - Around 35 indicators.
 - A reproducibility manifest on every run: data vendor, per-symbol coverage,
   code hash, cost model, seed, and which models answered.
@@ -94,8 +94,11 @@ the CLI flags may all move.
 
 - **Works with no API key.** Ollama and LM Studio are detected automatically;
   bundled strategies run with nothing installed at all.
-- `pyrite examples`, `run --example`, `sweep --example`.
-- A Python client (`pip install pyrite`), a Dockerfile, and prebuilt binaries.
+- `pyrite examples`, `run --example`, `sweep --example`. Eight bundled
+  strategies, including `daily-reversal`, which exists to be run with
+  `--cost-scan` and lose all 327% of its gross return to the spread.
+- A Python client (`pip install pyrite-quant`), a Dockerfile, and prebuilt
+  binaries.
 
 ### Fixed
 
