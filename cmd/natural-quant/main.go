@@ -26,42 +26,59 @@ import (
 // version is overridden at build time with -ldflags "-X main.version=..."
 var version = "dev"
 
-const usage = `natural-quant — describe a trading strategy in plain language, then backtest it.
+const usage = `natural-quant — describe a trading strategy in plain language, then find out
+whether the result means anything.
 
 Usage:
-  natural-quant serve [flags]            start the web app (default)
-  natural-quant run "<strategy>" [flags] run one backtest and print the result
-  natural-quant doctor                   check data, model providers and caches
-  natural-quant api                      print the strategy API reference
-  natural-quant cache clear [--ai]       clear cached market data and replies
-  natural-quant run ... [--cost-scan]
-  natural-quant sweep "<strategy>" [--param fast=10,20,50] [--objective sharpe]
-                                   [--csv out.csv] [--top 20]
-  natural-quant walkforward "<strategy>" [--train 504] [--test 126]
-                                         [--embargo 200] [--anchored]
-  natural-quant improve "<strategy>" [--budget 6] [--holdout 0.3] [--goal "..."]
-  natural-quant report "<strategy>" [--out report.md]
-  natural-quant ingest edgar [--symbols A,B] [--universe megacap] [--out FILE]
-  natural-quant ingest index [--index sp500] [--out FILE]
+  natural-quant serve [flags]              start the web app (default)
+  natural-quant run "<strategy>"           one backtest, with its own critique
+  natural-quant report "<strategy>"        the full battery, as one document
+
+Searching, because one backtest is one point in a space:
+  natural-quant sweep "<strategy>"         every combination, plus a heatmap and
+                                           the overfitting statistics
+  natural-quant walkforward "<strategy>"   choose on one period, report on the next
+  natural-quant improve "<strategy>"       guided search against a blind holdout
+
+Reference data:
+  natural-quant ingest edgar               point-in-time share counts, from SEC filings
+  natural-quant ingest index               point-in-time S&P 500 membership
+
+Everything else:
+  natural-quant doctor                     check data, model providers and caches
+  natural-quant api                        print the strategy API reference
+  natural-quant cache clear [--ai]         clear cached market data and replies
   natural-quant version
 
 Common flags:
-  --addr        host:port for the web server            (default 127.0.0.1:8080)
   --from        backtest start date, YYYY-MM-DD         (default 5 years ago)
   --to          backtest end date, YYYY-MM-DD           (default today)
   --cash        starting capital                        (default 100000)
   --benchmark   comma separated comparison symbols      (default SPY)
-  --universe    override the tradable symbols
+  --universe    tradable symbols, a universe name, or sp500 for
+                point-in-time index membership
+  --code-file   run a strategy you already have, skipping the compiler
+  --impact      market impact coefficient; 1 is the usual estimate
   --offline     use synthetic data, no network, no keys
   --json        print machine readable output
 
+  run:          --cost-scan  re-run at 0, 5, 20 and 50 bps of slippage
+  sweep:        --param fast=10,20,50   --objective sharpe   --csv out.csv
+  walkforward:  --train 504  --test 126  --embargo 200  --anchored
+  improve:      --budget 6   --holdout 0.3   --goal "..."
+  report:       --out report.md  --no-sweep  --no-walkforward
+
 Model provider keys are read from the environment:
   OPENAI_API_KEY, CEREBRAS_API_KEY, KIMI_API_KEY (or MOONSHOT_API_KEY)
+A key is needed only to compile plain language. Everything else — including
+every search above — runs on --code-file with no key at all.
 
 Examples:
   natural-quant serve
   natural-quant run "buy $100 of the biggest company by market cap each day, sell when it is no longer number one"
-  natural-quant run "golden cross on SPY with a 10% trailing stop" --from 2015-01-01
+  natural-quant sweep "golden cross on SPY" --from 2015-01-01
+  natural-quant walkforward "each month hold the 20 strongest S&P 500 names" --universe sp500
+  natural-quant report "a 60/40 portfolio rebalanced quarterly" --out report.md
 `
 
 func main() {
