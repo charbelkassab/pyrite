@@ -85,7 +85,7 @@ the CLI flags may all move.
 - Portfolio construction: minimum variance, maximum Sharpe, risk parity,
   hierarchical risk parity and inverse volatility, with Ledoit–Wolf shrinkage.
 - Market impact under the square-root law. The `daily-reversal` example
-  returns -14.6% on $100,000 and -99.6% on $1bn.
+  returns -15.1% on $100,000 and -99.6% on $1bn.
 - Around 35 indicators.
 - A reproducibility manifest on every run: data vendor, per-symbol coverage,
   code hash, cost model, seed, and which models answered.

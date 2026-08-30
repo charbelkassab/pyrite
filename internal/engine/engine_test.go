@@ -598,3 +598,82 @@ func TestIndexUniverseKeepsExtraSymbols(t *testing.T) {
 		t.Error("a symbol named alongside the index should still be loaded")
 	}
 }
+
+// A backtest must return the same number every time it is run. Regression:
+// ctx.rebalance() and ctx.equalWeight() queued their orders by ranging over a
+// Go map, so the orders reached the book in a different sequence on every
+// run. That is invisible while there is cash for all of them and decisive
+// when there is not, because the engine reduces whichever orders arrive last
+// — the same strategy over the same data returned 17.16%, 16.21% and 16.35%
+// on three consecutive runs.
+func TestRebalanceIsReproducible(t *testing.T) {
+	// Deliberately fully invested and rotating, so cash is the binding
+	// constraint and order sequence decides who gets filled.
+	spec := baseSpec(`
+		function onDay(ctx) {
+			const syms = ctx.symbols();
+			if (syms.length < 2) return;
+			const scored = [];
+			for (const s of syms) {
+				const r = ctx.roc(s, 1);
+				if (r !== null) scored.push({ s: s, r: r });
+			}
+			if (scored.length < 2) return;
+			scored.sort(function (a, b) { return a.r - b.r; });
+			ctx.equalWeight(scored.slice(0, 2).map(function (x) { return x.s; }));
+		}
+	`)
+	spec.InitialCash = 10000
+	spec.AllowFractional = false // integer shares make the cash constraint bite
+
+	var first float64
+	for i := 0; i < 6; i++ {
+		res, err := New(spec, newTestStore(t)).Run(context.Background())
+		if err != nil {
+			t.Fatalf("run %d: %v", i, err)
+		}
+		got := res.Metrics.TotalReturn
+		if i == 0 {
+			first = got
+			if len(res.Fills) == 0 {
+				t.Fatal("the strategy placed no orders, so this proves nothing")
+			}
+			continue
+		}
+		if got != first {
+			// Full precision, not %f: the divergence can be far below the
+			// digits a rounded format shows, and a failure message printing
+			// two identical-looking numbers helps nobody.
+			t.Fatalf("run %d returned %v, run 0 returned %v (delta %v): "+
+				"identical inputs must give identical output",
+				i, got, first, got-first)
+		}
+	}
+}
+
+// The order the book receives target orders must be stable and sorted, which
+// is what makes the run above reproducible.
+func TestEqualWeightQueuesOrdersInSortedOrder(t *testing.T) {
+	spec := baseSpec(`
+		function onDay(ctx) {
+			if (ctx.dayIndex === 40) ctx.equalWeight(["NVDA", "AAPL", "MSFT"]);
+		}
+	`)
+	res, err := New(spec, newTestStore(t)).Run(context.Background())
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	var got []string
+	for _, f := range res.Fills {
+		got = append(got, f.Symbol)
+	}
+	if len(got) != 3 {
+		t.Fatalf("expected 3 fills, got %d (%v)", len(got), got)
+	}
+	want := []string{"AAPL", "MSFT", "NVDA"}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("fills were %v, want %v", got, want)
+		}
+	}
+}

@@ -836,17 +836,7 @@ func (v *strategyVM) installContext() error {
 		if len(call.Arguments) > 1 {
 			reason = call.Argument(1).String()
 		}
-		held := map[string]bool{}
-		for _, s := range e.portfolio.OpenSymbols() {
-			held[s] = true
-		}
-		for sym, w := range targets {
-			e.addOrder(Order{Symbol: sym, Kind: KindWeight, Weight: w, IsTarget: true, Reason: reason})
-			delete(held, sym)
-		}
-		for sym := range held {
-			e.addOrder(Order{Symbol: sym, Kind: KindWeight, Weight: 0, IsTarget: true, Reason: reason})
-		}
+		e.emitTargets(targets, reason)
 		return goja.Undefined()
 	})
 
@@ -866,17 +856,7 @@ func (v *strategyVM) installContext() error {
 				targets[s] = w
 			}
 		}
-		held := map[string]bool{}
-		for _, s := range e.portfolio.OpenSymbols() {
-			held[s] = true
-		}
-		for sym, w := range targets {
-			e.addOrder(Order{Symbol: sym, Kind: KindWeight, Weight: w, IsTarget: true, Reason: "equal weight"})
-			delete(held, sym)
-		}
-		for sym := range held {
-			e.addOrder(Order{Symbol: sym, Kind: KindWeight, Weight: 0, IsTarget: true, Reason: "equal weight"})
-		}
+		e.emitTargets(targets, "equal weight")
 		return goja.Undefined()
 	})
 
@@ -1179,6 +1159,40 @@ func (v *strategyVM) rankUniverse(call goja.FunctionCall) []string {
 }
 
 // ---- helpers on Engine used by the bindings -----------------------------
+
+// emitTargets queues the orders that move the book to targets, closing any
+// held symbol the map does not name.
+//
+// The symbols are sorted before any order is queued, and that is the whole
+// point of this function existing. Ranging over the target map directly —
+// which is what both callers used to do — placed the orders in Go's
+// randomised map order, and order placement order is not cosmetic: when the
+// book runs short of cash the engine reduces whichever orders come last, so
+// the same strategy over the same data returned 17.16%, 16.21% and 16.35% on
+// three consecutive runs. A backtester that cannot reproduce its own number
+// has nothing to offer.
+func (e *Engine) emitTargets(targets map[string]float64, reason string) {
+	syms := make([]string, 0, len(targets))
+	for sym := range targets {
+		syms = append(syms, sym)
+	}
+	sort.Strings(syms)
+
+	held := map[string]bool{}
+	for _, s := range e.portfolio.OpenSymbols() {
+		held[s] = true
+	}
+	for _, sym := range syms {
+		e.addOrder(Order{Symbol: sym, Kind: KindWeight, Weight: targets[sym], IsTarget: true, Reason: reason})
+		delete(held, sym)
+	}
+	// OpenSymbols is already sorted, so filtering it preserves that order.
+	for _, s := range e.portfolio.OpenSymbols() {
+		if held[s] {
+			e.addOrder(Order{Symbol: s, Kind: KindWeight, Weight: 0, IsTarget: true, Reason: reason})
+		}
+	}
+}
 
 func (e *Engine) tradableSymbols() []string {
 	out := make([]string, 0, len(e.series))

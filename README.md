@@ -38,8 +38,15 @@ No API key. No account. No config file. No network, if you like.
 ```bash
 go install github.com/charbelkassab/pyrite/cmd/pyrite@latest
 
-pyrite run --example golden-cross
+pyrite run --example golden-cross --from 2018-01-02 --to 2023-12-29
 ```
+
+*(The date range is fixed so this output stays reproducible. Without it the
+backtest runs the full available history, up to today. Your figures may differ
+in the last decimal place or two: vendors revise adjusted closes whenever a
+dividend or split is applied, so a 2018 price is not quite the same number this
+year as it was last. The engine itself is deterministic — the same data always
+gives the same result.)*
 
 ```
 Golden cross
@@ -48,7 +55,7 @@ Classic 50/200 moving average crossover with a trailing stop.
 2018-01-02 to 2023-12-29   1509 trading days   universe of 1
 
   Starting capital          $100,000.00
-  Final value               $174,490.02
+  Final value               $174,489.91
   Total return                   74.49%
   Annualised (CAGR)               9.74%
   Volatility                     10.71%
@@ -189,22 +196,22 @@ that looks like one of the best strategies you have ever seen, until it has to
 pay to trade:
 
 ```
-$ pyrite run --example daily-reversal --from 2018-01-02 --cost-scan
+$ pyrite run --example daily-reversal --from 2018-01-02 --to 2023-12-29 --cost-scan
 
 How much survives friction?
   Slippage             Return         CAGR       Sharpe      Costs
-  0 bps               326.95%       27.43%         0.85      $0.00
-  5 bps                17.17%        2.68%         0.25 $208,926.55
-  20 bps              -97.63%      -46.49%        -1.56 $173,300.37
-  50 bps             -100.00%      -85.66%        -5.21 $114,952.45
+  0 bps               328.50%       27.51%         0.86      $0.00
+  5 bps                16.28%        2.55%         0.25 $209,053.60
+  20 bps              -97.69%      -46.71%        -1.57 $172,515.27
+  50 bps             -100.00%      -85.64%        -5.22 $115,339.09
 
-  Break-even slippage                   7.2 bps
+  Break-even slippage                   7.1 bps
 
-  the edge breaks even at around 7.2 bps of slippage. That is inside the
+  the edge breaks even at around 7.1 bps of slippage. That is inside the
   range a real account would pay on anything but the most liquid names
 ```
 
-**+327% gross, −97.6% at 20 bps.** The strategy replaces its whole book every
+**+328% gross, −97.7% at 20 bps.** The strategy replaces its whole book every
 session, so the entire result was the spread it never paid. A backtester that
 defaults slippage to zero shows you the first row and stops.
 
@@ -216,11 +223,11 @@ A single backtest tells you how one configuration did over one sample. It
 cannot tell you whether the idea works or whether that number happened to fit.
 
 ```bash
-pyrite sweep --example golden-cross --from 2015-01-05
+pyrite sweep --example golden-cross --from 2015-01-05 --to 2023-12-29
 ```
 
 ```
-160 combinations, ranked by sharpe
+160 combinations in 995ms, ranked by sharpe
 
                                   sharpe     return   drawdown     trades    win%
   fast=50 slow=150 trail=0.12       0.89    128.85%    -15.99%          6  83.33%
@@ -247,13 +254,13 @@ How much of this is real?
   Expected best from luck alone           0.426
   Combinations above zero               100.00%
   Neighbour support                      82.51%
-  Prob. of backtest overfitting          77.14%   (70 splits)
+  Prob. of backtest overfitting          81.43%   (70 splits)
   Deflated Sharpe                        91.09%
 
   best sharpe 0.89 against 0.43 expected from luck alone over 160 trials;
   the winner sits on a broad plateau (neighbours average 83% of its score),
   which is what a real edge looks like; probability of backtest overfitting
-  is 77% — selecting on this sample carries no information about the next
+  is 81% — selecting on this sample carries no information about the next
   one
 ```
 
@@ -278,13 +285,14 @@ instantly. The statistics put numbers on it:
 ### 3. `walkforward` — choose on one period, report on the next
 
 The sweep above returned a split verdict: the winner sits on a *broad plateau*,
-"what a real edge looks like", but a 77% probability of overfitting says
+"what a real edge looks like", but an 81% probability of overfitting says
 choosing on that sample tells you nothing about the next one. Those two claims
 cannot both be right. Here is the tiebreak — the plateau meeting data it was
 not chosen on.
 
 ```bash
-pyrite walkforward --example golden-cross --train 500 --test 150
+pyrite walkforward --example golden-cross --from 2010-01-05 --to 2023-12-29 \
+    --train 500 --test 150
 ```
 
 ```
@@ -586,11 +594,12 @@ optimistic.
 splits and dividends, cash drag, next-open fills, and — with `--impact 1` —
 market impact under the square-root law, so a large order pays for the
 liquidity it demands. That last one changes results more than anything else
-here: the daily reversal above returns **−14.6% on $100,000 and −99.6% on
+here: the daily reversal above returns **−15.1% on $100,000 and −99.6% on
 $1bn**, purely because the second has to move the market to get filled.
 
 ```bash
-pyrite run --example daily-reversal --impact 1 --cash 1000000000
+pyrite run --example daily-reversal --from 2018-01-02 --to 2023-12-29 \
+    --impact 1 --cash 1000000000
 ```
 
 ---
