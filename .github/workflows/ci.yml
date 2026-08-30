@@ -110,6 +110,28 @@ jobs:
       - name: Doctor
         run: ./nq doctor
 
+  docker:
+    name: Container image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      # Built but not pushed: a broken Dockerfile should fail the pull
+      # request that broke it, not the release three weeks later.
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          load: true
+          tags: pyrite:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: The image must actually run
+        run: |
+          docker run --rm pyrite:ci version
+          docker run --rm pyrite:ci run --example golden-cross --offline \
+            --from 2019-01-02 --to 2023-12-29 | grep -q "Total return"
+
   build-matrix:
     name: Build ${{ matrix.goos }}/${{ matrix.goarch }}
     runs-on: ubuntu-latest

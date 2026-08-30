@@ -4,13 +4,10 @@ on:
   push:
     tags: ['v*']
   workflow_dispatch:
-    inputs:
-      tag:
-        description: 'Tag to build (for a dry run)'
-        required: true
 
 permissions:
   contents: write
+  packages: write
 
 jobs:
   release:
@@ -45,7 +42,9 @@ jobs:
           files: dist/*
           generate_release_notes: true
           draft: false
-          prerelease: ${{ contains(github.ref_name, '-rc') || contains(github.ref_name, '-beta') }}
+          # A manual dispatch runs from a branch, where ref_name is not a
+          # version, so only a real tag can mark itself a prerelease.
+          prerelease: ${{ startsWith(github.ref, 'refs/tags/') && (contains(github.ref_name, '-rc') || contains(github.ref_name, '-beta')) }}
           body: |
             ## Install
 
@@ -62,4 +61,54 @@ jobs:
             pyrite serve --offline --open
             ```
 
+            Or with Docker:
+
+            ```bash
+            docker run --rm -p 8080:8080 \
+              ghcr.io/${{ github.repository }}:${{ github.ref_name }} \
+              serve --addr 0.0.0.0:8080 --offline
+            ```
+
             Verify a download against `SHA256SUMS`.
+
+  container:
+    name: Publish the container image
+    runs-on: ubuntu-latest
+    # Only for real tags. A dispatch is a dry run of the binaries, and
+    # publishing a floating `latest` from a branch is how a registry ends up
+    # serving something nobody tagged.
+    if: startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable=${{ !contains(github.ref_name, '-') }}
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: VERSION=${{ github.ref_name }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
