@@ -3,6 +3,41 @@
 Every backtesting tool flatters its results. This page is the honest accounting
 of how, so that you can discount what you see by roughly the right amount.
 
+## What a parameter search does and does not tell you
+
+`natural-quant sweep` exists because a single backtest is one point in a space,
+and the number it reports is a joint fact about the idea and the particular
+parameters someone typed. Searching that space is the only way to separate the
+two — and it introduces its own failure mode, which the tool reports rather than
+hides.
+
+**Searching harder makes the best result look better even when nothing is
+there.** Try enough configurations and one will look excellent by chance. That
+is what "expected best from luck alone" measures: the score the top of *N*
+trials reaches with no skill at all, given the spread the search actually
+produced. A best below that line is not evidence of anything, and the verdict
+says so in those words.
+
+**The deflated Sharpe is not the Sharpe.** It corrects for the number of trials
+and for the skew and fat tails of the winner's own returns. A strategy that
+sells tail risk scores well on the naive measure and poorly here, which is the
+entire point of the correction.
+
+**PBO is measured, not assumed.** Combinatorially symmetric cross-validation
+splits the same period many ways and asks how often the in-sample winner lands
+below median out of sample. Around 0.5 is a coin flip, which is what pure
+overfitting looks like. It is computed only when the per-trial return series fit
+inside the memory budget; when they do not, the field is `null` rather than
+zero, because a zero would read as "no overfitting at all" — the most flattering
+possible answer, arrived at by having computed nothing.
+
+**Walk-forward is honest about selection, not about the data.** Choosing
+parameters on one window and reporting on the next removes the search from the
+reported number. It does not remove survivorship bias from the universe, or
+lookahead from `ctx.web()`, or any of the other problems on this page. A strategy
+with excellent walk-forward efficiency over a survivorship-biased universe is
+still being flattered.
+
 ## Biases that are present
 
 ### Survivorship bias
@@ -23,32 +58,47 @@ trades SPY is unaffected.
 plausible choices at the start of your window, using `--universe` or the
 universe field in the interface.
 
-### Approximate market capitalisation
+### Market capitalisation, now from filings
 
-Ranking by market cap needs shares outstanding *as of the historical date*. No
-free, keyless source provides that series: Yahoo's `quoteSummary` and `v7/quote`
-endpoints return HTTP 401, and the remaining free tiers give only a current
-snapshot.
+Ranking by market cap needs shares outstanding *as of the historical date*.
+Yahoo's `quoteSummary` and `v7/quote` endpoints return HTTP 401, but the SEC's
+XBRL company-facts API at `data.sec.gov` serves the full disclosure history per
+company, free and without a key.
 
-Using one present-day share count across a whole backtest would silently corrupt
-every historical ranking — Apple's count alone has moved by a factor of four
-through splits and buybacks. So natural-quant ships a curated table of
-piecewise-constant share counts at
-`internal/market/assets/shares_outstanding.csv`.
+The bundled table at `internal/market/assets/shares_outstanding.csv` is
+generated from it — 8,473 rows across 290 symbols, each citing the accession
+number of the filing it came from. Rebuild or extend it with:
 
-What that means in practice:
+```bash
+natural-quant ingest edgar --universe megacap \
+    --user-agent "Your Name you@example.com"
+```
 
-- Figures are rounded to roughly three significant figures. Good enough to rank
-  mega caps against each other; not accounting-grade.
-- Symbols with a single row use one recent count for all of history. Accuracy for
-  those names decays the further back you test.
-- The table covers large caps, not the whole market.
+**Rows are dated by publication, not measurement.** A share count on a 31 March
+cover page did not become knowable until the 10-Q appeared in May. Dating rows
+by the measurement date would hand every historical backtest several weeks of
+free information — a small lookahead bias, but a real one, and avoidable. The
+`as_of` column preserves the measurement date.
+
+What is still wrong:
+
+- Dates before a symbol's first filing extrapolate backwards from the earliest
+  row. Accuracy decays the further back you test.
+- Consecutive filings within 0.5% of each other are dropped to keep the table
+  small. Splits and buyback programmes survive; quarterly drift does not, and is
+  not material to a ranking.
+- Multi-class filers such as META report against a share-class axis, and the
+  XBRL API does not serve dimensional facts. Their counts come from a weighted
+  period average, named in the `tag` column and flagged in the file header. An
+  approximation that ranks a mega cap correctly against its peers beats dropping
+  the symbol from every ranking.
+- ETFs, indices and crypto have no share count and are absent by design.
 
 `ctx.marketCap()` returns `null` for symbols with no data, and ranking functions
 skip them rather than guessing.
 
-**Corrections with a citation are the highest-value contribution to this
-project.** See [CONTRIBUTING.md](../CONTRIBUTING.md).
+**Corrections with a citation are still welcome.** See
+[CONTRIBUTING.md](../CONTRIBUTING.md).
 
 ### Lookahead bias in AI and web strategies
 

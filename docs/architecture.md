@@ -23,6 +23,25 @@ web/                   front end, embedded with go:embed
 Dependency direction is strictly one-way: `server` → `app` → `strategy` →
 `engine` → `market`. Nothing lower ever imports something higher.
 
+Inside `engine`, the files split along what they answer:
+
+```
+engine.go        the daily loop
+portfolio.go     cash, positions, fills, financing
+indicators.go    the maths a strategy can call
+jsvm.go          the ctx object handed to the strategy
+metrics.go       the headline numbers
+riskmetrics.go   distribution shape, drawdown persistence, capture
+trades.go        fills paired into round trips, with MAE/MFE
+attribution.go   by year, by regime, by holding, and stress tests
+params.go        declared tunables and grid expansion
+sweep.go         the parallel search
+walkforward.go   rolling train/test evaluation
+robustness.go    deflated Sharpe, PBO, bootstrap, plateau
+critique.go      what is wrong with this result
+manifest.go      provenance
+```
+
 ## The request path
 
 ```
@@ -46,6 +65,57 @@ GET /api/runs/{id}/events           SSE: status, progress, done
 
 The client watches the SSE stream, so a five-minute run reports progress instead
 of hanging on one request.
+
+## The search path
+
+```
+POST /api/sweeps {prompt|code, grids, objective, walk_forward, ...}
+    │
+    └─ goroutine, same Run lifecycle as a backtest:
+         planFor                     compile, or take supplied code
+         DeclaredParams              run setup() once to find ctx.param()
+           └─ one data load, then shared by every worker
+         Combos                      cartesian product, stably ordered
+         worker pool                 one goja.Runtime per worker, reused
+           └─ each run: OmitDayRecords, full metrics kept
+         AssessRobustness            spread, plateau, expected max
+         AddPBO                      combinatorially symmetric CV
+         AddDeflatedSharpe           winner's own skew and kurtosis
+         Finish                      write the verdict last
+```
+
+A sweep reuses the whole `Run` lifecycle — progress, SSE, cancellation,
+persistence — because it is the same thing many times over. A parallel store
+for it would be duplication rather than design.
+
+### Why the parallelism is nearly free
+
+`market.Store` is read-only once loaded and guards itself with a mutex, so N
+workers share one copy of the price data with no coordination and no
+duplication. There is no interpreter lock to work around and nothing to
+serialise between processes. What limits the search is the interpreter, not the
+data layer, which is why `Spec.OmitDayRecords` exists: a full `DayRecord` per
+session is the single most valuable thing one run produces and the fastest way
+to exhaust memory across ten thousand of them.
+
+Walk-forward is a sweep per training window plus one untouched run on the test
+window that follows, chained so the stitched curve is the equity of someone who
+actually re-optimised on that schedule. The embargo between them defaults to the
+strategy's warm-up, which is exactly the horizon over which an indicator can
+leak across the boundary.
+
+## NaN is a wire-format problem, not a maths problem
+
+`encoding/json` refuses to encode NaN and ±Inf. Because `net/http` has already
+written the status line by the time the encoder reaches a bad float, the client
+receives a 200 with an empty body and no error anywhere — the server log is the
+only trace.
+
+Every metric that can legitimately be undefined is therefore an `engine.Ratio`,
+which marshals to `null`: a Sortino with no losing days, a profit factor with no
+losing trades, a score for a combination that failed. `TestResultAlwaysEncodes`
+and its siblings encode a result, a sweep and a walk-forward with deliberately
+undefined cells and fail on any non-finite literal reaching the output.
 
 ## Why JavaScript in goja
 
@@ -132,6 +202,27 @@ prompt)*. A strategy calling the model once per trading day over five years make
 every new benchmark — pays that again in money and minutes. With it, only the
 first run is expensive, and AI-driven backtests become exactly reproducible,
 which is what makes comparing two variants meaningful.
+
+## Reference data from filings
+
+Ranking by market cap needs shares outstanding as of the historical date.
+`internal/market/edgar.go` builds that table from the SEC's XBRL company-facts
+API, which is free and needs no key beyond a declared User-Agent.
+
+Two decisions in there are worth knowing about. Rows are dated by the filing's
+publication date rather than the cover date it measured, because a count printed
+on a 31 March cover page was not knowable until the 10-Q appeared in May.
+And the client reads `companyfacts` rather than `companyconcept`: the
+per-concept endpoint returns an empty object where an array is documented for
+some filers, and one request per company is politer than one per tag anyway.
+
+Tag preference is ordered by how closely each answers the question a market cap
+asks. Weighted-average tags sit above `CommonStockSharesIssued` deliberately:
+issued counts include treasury stock, so for a company that has bought back
+heavily they are wrong by a wide margin, while the weighted average lands within
+a fraction of a percent. Multi-class filers report against a share-class axis
+that the XBRL API does not expose at all, so they fall back to the average and
+are flagged as approximate rather than dropped.
 
 ## Front end
 

@@ -10,6 +10,7 @@ to any stock, index or rival strategy you want to compare it with.
 
 [Quick start](#quick-start-60-seconds) ·
 [Examples](#what-you-can-ask-for) ·
+[Searching](#one-backtest-is-not-evidence) ·
 [How it works](#how-it-works) ·
 [Which AI provider](#choosing-an-ai-provider) ·
 [Limitations](#limitations-please-read)
@@ -152,6 +153,127 @@ vendored locally so the app has zero external runtime dependencies.
 
 ---
 
+## One backtest is not evidence
+
+A single backtest tells you how one configuration did over one sample. It
+cannot tell you whether the idea works or whether that particular number
+happened to fit. So natural-quant makes the second question first-class.
+
+**Every number is a parameter.** The compiler declares them rather than
+hardcoding them — "the 50 day average" becomes a default of 50 and a grid
+around it:
+
+```js
+function setup(ctx) {
+  ctx.param("fast", 50,  { grid: [20, 35, 50, 65, 80] });
+  ctx.param("slow", 200, { grid: [100, 150, 200, 250] });
+}
+```
+
+**Search the space, not the point.**
+
+```
+natural-quant sweep "buy SPY when the fast average crosses above the slow one"
+```
+
+```
+fast across, slow down, shaded by sharpe
+
+  200 │  *  *  =  =  =
+  150 │  #  =  :  -  -
+  100 │  #  @  .  :
+   50 │  .  #  #  +  :
+      └───────────────
+         5 10 20 40 60
+
+How much of this is real?
+  Best sharpe                             0.749
+  Median sharpe                           0.543
+  Expected best from luck alone           0.213
+  Neighbour support                      75.83%
+  Prob. of backtest overfitting          85.71%   (70 splits)
+  Deflated Sharpe                        94.22%
+
+  best sharpe 0.75 against 0.21 expected from luck alone over 20 trials; the
+  winner's neighbours average 76% of its score — some support, but the peak is
+  doing real work; probability of backtest overfitting is 86% — selecting on
+  this sample carries no information about the next one
+```
+
+A heatmap is the fastest overfitting detector ever built. One bright cell in a
+dark field is a fluke; a broad warm region is an edge. The statistics put
+numbers on what the eye already sees:
+
+- **Expected best from luck alone** — what the top of *N* trials scores with no
+  skill at all. A best below it is not evidence of anything.
+- **Deflated Sharpe** — the Sharpe corrected for how many strategies you tried,
+  plus the skew and fat tails of the winner's own returns.
+- **Probability of backtest overfitting** — across many train/test splits of
+  the same period, how often the in-sample winner lands below median out of
+  sample. 50% is a coin flip, which is what pure overfitting looks like.
+- **Neighbour support** — how the cells beside the winner scored.
+
+**Choose on one period, report on another.**
+
+```
+natural-quant walkforward "..." --train 504 --test 126
+```
+
+Parameters are picked on each training window and applied untouched to the
+window that follows, with an embargo between them so a 200-day indicator
+cannot leak across the boundary. The stitched curve is the only equity line in
+the tool that was never fitted to.
+
+```
+  Mean in-sample return                  28.84%
+  Mean out-of-sample return               5.45%
+  Walk-forward efficiency                18.91%
+  Positive test windows                   15 / 20
+
+  15 of 20 test windows finished positive; out-of-sample captured only 19% of
+  in-sample return, so most of the backtest was the search finding the sample
+  rather than an edge
+```
+
+Runs in parallel across your cores, sharing one copy of the price data — 400
+backtests in under half a second on a laptop.
+
+---
+
+## Every result criticises itself
+
+A backtesting tool that oversells itself is worse than useless, so each run
+comes back with the paragraph a good quant would write about it:
+
+```
+How much should you believe this?  20/100
+
+  STOP too few trades to mean anything
+        12 closed round trips. A win rate or a Sharpe over this many trades is
+        noise: one different outcome moves every statistic here materially.
+
+  STOP this is short volatility in disguise
+        Returns are left-skewed (-1.33) with fat tails (excess kurtosis 11.5):
+        many small gains and occasional large losses. Sharpe flatters this
+        shape badly, because the risk it measures is not the risk being taken.
+
+  warn the return is concentrated in a few sessions
+        50% of the total gain disappears when excluding the 5 best days.
+```
+
+These findings are computed, not asked of a model. They cost nothing, work
+with no API key, and cannot invent a number. It detects lookahead fills,
+frictionless high-turnover runs, samples too small to mean anything, returns
+concentrated in a handful of sessions, short-volatility return shapes,
+survivorship in the symbol list, in-loop model calls, and exits that give back
+what the entries found.
+
+The full report also breaks the result down **by year, by market regime**
+(calm, normal, high volatility, bear), **by holding**, and by what is left
+when the best month or the best five days are removed.
+
+---
+
 ## How it works
 
 ```
@@ -242,14 +364,30 @@ natural-quant genuinely cannot tell you.
 know went on to succeed. Real-time you would have been choosing from a different
 list containing names that later failed.
 
-**Market cap data is approximate.** No free, keyless API serves point-in-time
-shares outstanding — Yahoo's fundamentals endpoints now return HTTP 401. So
-natural-quant ships a curated, piecewise-constant share-count table
+**Market cap data comes from filings, and is still imperfect.** Ranking by
+market cap needs shares outstanding *as of the historical date*. Yahoo's
+fundamentals endpoints return HTTP 401, but the SEC's XBRL company-facts API
+serves the full disclosure history per company, free and without a key. So the
+bundled table
 ([`internal/market/assets/shares_outstanding.csv`](internal/market/assets/shares_outstanding.csv))
-covering mega caps. It is accurate enough to rank the largest companies against
-each other, which is what "the biggest company" needs. It is not accounting-grade,
-and accuracy decays the further back you test. Corrections with a citation are the
-single most valuable contribution you can make to this project.
+is generated from real filings — 8,473 rows across 290 symbols, each citing the
+accession number it came from. Rebuild or extend it yourself:
+
+```bash
+natural-quant ingest edgar --universe megacap \
+    --user-agent "Your Name you@example.com"
+```
+
+Rows are dated by when the filing was **published**, not by the date the count
+was measured: a share count on a 31 March cover page was not knowable until the
+10-Q appeared in May, and dating it the other way hands every historical
+backtest several weeks of free information.
+
+What is still wrong: dates before a symbol's first filing extrapolate backwards
+from the earliest row; consecutive filings within 0.5% of each other are dropped
+to keep the table small; and multi-class filers such as META report against a
+share-class axis the SEC's API does not expose, so their counts come from a
+weighted period average and are flagged as approximate in the file.
 
 **AI and web strategies have lookahead bias by construction.** `ctx.web()` and
 `ctx.news()` query the internet *as it is now*, not as it was on the simulated day.
@@ -261,6 +399,11 @@ these runs as demonstrations of a mechanism, never as evidence that an idea work
 options and futures, dividends as cash (they are reinvested via adjusted closes),
 market impact for large orders, borrow availability for shorts, delistings and
 spin-offs.
+
+**The symbol lists are still survivorship-biased.** The share-count table is
+now real, but the universes still name companies that matter *today*. Fixing
+that needs point-in-time index membership and prices for delisted names, which
+is a separate problem — see [docs/limitations.md](docs/limitations.md).
 
 **Modelled:** commissions, slippage (5 bps by default, not zero), short borrow
 cost, splits and dividends, cash drag, next-open fills.
@@ -314,10 +457,24 @@ natural-quant serve [--addr host:port] [--offline] [--open] [--dev ./web]
 natural-quant run "<strategy>" [--from 2015-01-01] [--to 2024-12-31]
                                [--cash 100000] [--benchmark SPY,QQQ]
                                [--universe tech] [--code] [--json]
+                               [--code-file strategy.js]
+
+natural-quant sweep "<strategy>"        # search the parameter space
+                               [--param fast=10,20,50] [--objective sharpe]
+                               [--top 20] [--csv out.csv] [--max-combos 5000]
+natural-quant walkforward "<strategy>"  # optimise in-sample, report out
+                               [--train 504] [--test 126] [--embargo 200]
+                               [--anchored]
+
+natural-quant ingest edgar --universe megacap --user-agent "You you@example.com"
 natural-quant doctor           # check data, providers, caches
 natural-quant api              # print the strategy API reference
 natural-quant cache clear [--ai]
 ```
+
+`--code-file` runs a strategy you already have, skipping the compiler. Every
+command accepts it, so you can iterate on generated code without paying for a
+model call each time.
 
 ## Configuration
 
