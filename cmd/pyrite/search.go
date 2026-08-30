@@ -291,7 +291,7 @@ func prepareSearch(fs *flag.FlagSet, prompt string, o searchOpts) (*searchSetup,
 			opts.Index = market.IndexUniverse(strings.Join(ex.Universe, ","))
 		}
 		plan := &strategy.Plan{
-			Name: firstNonEmpty(ex.Title, ex.Name), Description: ex.Summary,
+			Name: firstNonEmpty(ex.Label, ex.Name), Description: firstNonEmpty(ex.Title, ex.Summary),
 			Code: ex.Code, Universe: ex.Universe, Benchmarks: ex.Benchmarks,
 			Warmup: ex.Warmup, AllowShort: ex.AllowShort,
 		}

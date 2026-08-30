@@ -297,7 +297,7 @@ func cmdRun(args []string) error {
 			return err
 		}
 		plan = &strategy.Plan{
-			Name: ex.Title, Description: ex.Summary, Code: ex.Code,
+			Name: ex.Label, Description: firstNonEmpty(ex.Title, ex.Summary), Code: ex.Code,
 			Universe: ex.Universe, Benchmarks: ex.Benchmarks,
 			Warmup: ex.Warmup, AllowShort: ex.AllowShort,
 		}

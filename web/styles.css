@@ -654,3 +654,47 @@ td.num, .metrics td:not(:first-child) { font-family: var(--mono); }
 .finding.warning .sev { color: var(--warn, #d69e2e); }
 .finding h4 { margin: 2px 0 4px; font-size: 14px; }
 .finding p { margin: 0; line-height: 1.55; }
+
+/* ── empty state sections ────────────────────────────────── */
+
+.empty-section { margin-top: 26px; }
+.empty-section h2 {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0 0 4px;
+  color: var(--text);
+}
+.empty-section .hint { margin: 0 0 12px; }
+
+/* A bundled strategy runs immediately, so it is presented as an action
+   rather than as text to read. The badge styling is shared so the disabled
+   variant does not fall back to unstyled text running into the label. */
+.example.runnable { border-color: var(--accent); }
+
+.example.runnable strong,
+.example.needs-model strong {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.example.runnable strong::after,
+.example.needs-model strong::after {
+  flex: none;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  border: 1px solid currentColor;
+  border-radius: 3px;
+  padding: 1px 6px;
+}
+.example.runnable strong::after {
+  content: "Run";
+  color: var(--accent);
+}
+.example.needs-model { opacity: .55; }
+.example.needs-model strong::after {
+  content: "needs a model";
+  color: var(--text-muted);
+}

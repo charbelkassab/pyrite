@@ -71,6 +71,9 @@ const state = {
   baselineDate: null,
   rebasing: false,
   composerKind: 'strategy',
+  // hasModel decides whether a plain-English prompt can be compiled at all.
+  // The empty state reads it to say which of the two lists is usable.
+  hasModel: false,
   // period is the data window that is loaded and backtested, as opposed to
   // the zoom level, which only decides what part of it is on screen.
   period: { from: null, to: null },
@@ -1480,22 +1483,95 @@ async function loadRun(id) {
 }
 
 async function loadExamples() {
+  // Two lists, and the order matters. A visitor with no model can run the
+  // bundled strategies and cannot compile a prompt, and most visitors will
+  // have no model — so the runnable ones come first and say so.
+  await Promise.all([loadBundled(), loadPromptExamples()]);
+}
+
+async function loadBundled() {
+  try {
+    const list = await api('/api/bundled');
+    if (!list || !list.length) return;
+    const box = $('bundledExamples');
+    box.textContent = '';
+
+    for (const ex of list) {
+      const b = el('button', 'example runnable');
+      b.appendChild(el('strong', '', ex.label || ex.name));
+      b.appendChild(document.createTextNode(ex.title || ''));
+      if (ex.needs_model) {
+        b.className = 'example needs-model';
+        b.title = 'This one calls a model inside the backtest, so it needs one configured.';
+        b.disabled = !state.hasModel;
+      }
+      b.onclick = () => runBundled(ex);
+      box.appendChild(b);
+    }
+    $('bundledSection').hidden = false;
+  } catch { /* the binary always has these; a failure here is not worth surfacing */ }
+}
+
+// runBundled backtests an embedded strategy directly, skipping the compiler.
+function runBundled(ex) {
+  const view = addView({
+    kind: 'strategy',
+    label: ex.label || ex.name,
+    prompt: ex.summary || ex.title || ex.name,
+    status: 'running',
+    stage: 'starting',
+    progress: 0,
+  });
+  showWorkspace();
+
+  api('/api/runs', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    // runOptions() carries the chart's period and the cost settings; the
+    // example's own declarations win for what it needs to run at all.
+    body: JSON.stringify({
+      ...runOptions(),
+      // Default to a decade rather than all available history. Full history
+      // is a legitimate choice the user can make on the chart, but as a first
+      // impression it compounds into a number nobody can read.
+      start: state.period.from || isoYearsAgo(10),
+      code: ex.code,
+      name: ex.label || ex.name,
+      universe: ex.universe || [],
+      benchmarks: (ex.benchmarks && ex.benchmarks.length) ? ex.benchmarks : ['SPY'],
+      warmup: ex.warmup || 0,
+      allow_short: !!ex.allow_short,
+    }),
+  }).then(({ id }) => {
+    view.runId = id;
+    streamRun(id, view);
+  }).catch((e) => {
+    view.status = 'error';
+    view.error = shortReason(String((e && e.message) || e));
+    renderViews();
+  });
+}
+
+async function loadPromptExamples() {
   try {
     const list = await api('/api/examples');
-    const render = (container, items, compact) => {
-      container.textContent = '';
-      for (const ex of items) {
-        const b = el('button', 'example');
-        b.appendChild(el('strong', '', ex.title));
-        if (!compact) b.appendChild(document.createTextNode(ex.prompt.slice(0, 92) + (ex.prompt.length > 92 ? '…' : '')));
-        b.onclick = () => {
-          openComposer('strategy', ex.prompt);
-          $('promptInput').focus();
-        };
-        container.appendChild(b);
-      }
-    };
-    render($('emptyExamples'), list.slice(0, 6), false);
+    const box = $('emptyExamples');
+    box.textContent = '';
+    for (const ex of list.slice(0, 6)) {
+      const b = el('button', 'example');
+      b.appendChild(el('strong', '', ex.title));
+      b.appendChild(document.createTextNode(
+        ex.prompt.slice(0, 92) + (ex.prompt.length > 92 ? '…' : '')));
+      b.onclick = () => {
+        openComposer('strategy', ex.prompt);
+        $('promptInput').focus();
+      };
+      box.appendChild(b);
+    }
+    // Say plainly whether these can be used at all right now.
+    $('promptExamplesHint').textContent = state.hasModel
+      ? 'Click one to load it, or write your own.'
+      : 'These need a model to compile. Run `pyrite doctor` — a local one is free.';
   } catch { /* examples are static */ }
 }
 
@@ -1511,8 +1587,9 @@ async function loadHealth() {
       box.appendChild(s);
     };
     const enabled = (h.providers || []).filter((p) => p.enabled);
+    state.hasModel = enabled.length > 0;
     if (enabled.length) add('dot-ok', `${enabled.map((p) => p.name).join(', ')} connected`);
-    else add('dot-warn', 'no model key — set OPENAI_API_KEY, CEREBRAS_API_KEY or KIMI_API_KEY');
+    else add('dot-warn', 'no model — bundled strategies still run; see `pyrite doctor`');
     add(h.offline_mode ? 'dot-warn' : 'dot-ok', h.offline_mode ? 'offline (synthetic data)' : `data: ${h.data_provider}`);
     if (h.cached_symbols) add('dot-off', `${h.cached_symbols} symbols cached`);
   } catch { /* informational */ }
@@ -1681,8 +1758,9 @@ function init() {
   };
   $('btnCloseApi').onclick = () => $('apiDialog').close();
 
-  loadHealth();
-  loadExamples();
+  // Health first, then the examples: the empty state needs to know whether a
+  // model exists before it can say which of its two lists is usable.
+  loadHealth().then(loadExamples).catch(() => loadExamples());
   renderViews();
 
   // Deep links restore a whole workspace. Each part is independent: a link

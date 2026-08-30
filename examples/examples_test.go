@@ -126,3 +126,34 @@ func TestGetToleratesAFileExtension(t *testing.T) {
 		t.Errorf("a name with .js should resolve: %v", err)
 	}
 }
+
+func TestLabelIsShortEnoughForALegend(t *testing.T) {
+	// Title is documentation — a full sentence. Using it as a chart legend or
+	// a metrics column header produces something nobody can read.
+	for _, ex := range All() {
+		if ex.Label == "" {
+			t.Errorf("%s has no label", ex.Name)
+		}
+		if len(ex.Label) > 24 {
+			t.Errorf("%s label %q is too long for a legend", ex.Name, ex.Label)
+		}
+		if ex.Label == ex.Title {
+			t.Errorf("%s label and title should differ; the title is a sentence", ex.Name)
+		}
+	}
+}
+
+func TestLabelFor(t *testing.T) {
+	cases := map[string]string{
+		"golden-cross":      "Golden cross",
+		"momentum-rotation": "Momentum rotation",
+		"sixty-forty":       "Sixty forty",
+		"single":            "Single",
+		"":                  "",
+	}
+	for in, want := range cases {
+		if got := labelFor(in); got != want {
+			t.Errorf("labelFor(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

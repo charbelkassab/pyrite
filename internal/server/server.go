@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charbelkassab/pyrite/examples"
 	"github.com/charbelkassab/pyrite/internal/app"
 	"github.com/charbelkassab/pyrite/internal/engine"
 	"github.com/charbelkassab/pyrite/internal/market"
@@ -60,6 +61,7 @@ func (s *Server) routes() {
 	m.HandleFunc("GET /api/health", s.handleHealth)
 	m.HandleFunc("GET /api/universes", s.handleUniverses)
 	m.HandleFunc("GET /api/examples", s.handleExamples)
+	m.HandleFunc("GET /api/bundled", s.handleBundled)
 	m.HandleFunc("GET /api/strategy-api", s.handleStrategyAPI)
 	m.HandleFunc("GET /api/symbols", s.handleSymbolSearch)
 	m.HandleFunc("GET /api/series", s.handleSeries)
@@ -646,6 +648,16 @@ type Example struct {
 
 func (s *Server) handleExamples(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, Examples)
+}
+
+// handleBundled lists the strategies compiled into the binary.
+//
+// These are the ones a visitor with no model can actually run: the examples
+// above are prompts, and a prompt needs something to compile it. Without this
+// endpoint, someone opening the app without a key can look at it and nothing
+// else, which is most of the people who will ever open it.
+func (s *Server) handleBundled(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, examples.All())
 }
 
 // Examples are curated to demonstrate the range of the platform, from a plain

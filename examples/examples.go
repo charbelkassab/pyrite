@@ -24,6 +24,10 @@ var files embed.FS
 // Example is one bundled strategy.
 type Example struct {
 	Name string `json:"name"`
+	// Label is a short human name derived from the file name, for a chart
+	// legend or a metrics column. Title is a full sentence and is documentation
+	// rather than a label; using it as one produces a legend nobody can read.
+	Label string `json:"label"`
 	// Title and Summary are read from the leading comment block, so each file
 	// stays the single source of truth rather than duplicating a description
 	// into a Go table that will drift from it.
@@ -141,8 +145,24 @@ func parse(name, src string) Example {
 		summary = append(summary, body)
 	}
 	ex.Title = strings.Join(strings.Fields(ex.Title), " ")
+	ex.Label = labelFor(name)
 	ex.Summary = strings.Join(strings.Fields(strings.Join(summary, " ")), " ")
 	return ex
+}
+
+// labelFor turns a file name into a short display name: "golden-cross"
+// becomes "Golden cross".
+func labelFor(name string) string {
+	words := strings.FieldsFunc(name, func(r rune) bool { return r == '-' || r == '_' })
+	if len(words) == 0 {
+		return name
+	}
+	for i, w := range words {
+		if i == 0 && w != "" {
+			words[i] = strings.ToUpper(w[:1]) + w[1:]
+		}
+	}
+	return strings.Join(words, " ")
 }
 
 func splitList(v string) []string {
