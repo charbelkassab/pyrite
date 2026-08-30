@@ -182,24 +182,7 @@ func RunSweep(ctx context.Context, ss SweepSpec, store *market.Store, progress S
 	if err != nil {
 		return nil, err
 	}
-	// Caller-supplied grids win, and may introduce a parameter the strategy
-	// never declared — useful for sweeping something like a stop that was
-	// written inline.
-	byName := map[string]int{}
-	for i, d := range decls {
-		byName[d.Name] = i
-	}
-	for name, grid := range ss.Grids {
-		if i, ok := byName[name]; ok {
-			decls[i].Grid = grid
-			continue
-		}
-		var def any
-		if len(grid) > 0 {
-			def = grid[0]
-		}
-		decls = append(decls, ParamDecl{Name: name, Default: def, Grid: grid})
-	}
+	decls = mergeGrids(decls, ss.Grids)
 	if len(decls) == 0 {
 		return nil, fmt.Errorf("this strategy declares no parameters, so there is nothing to sweep.\n" +
 			"  Declare one with ctx.param(\"name\", default, { grid: [...] }) in setup(),\n" +
@@ -462,6 +445,42 @@ func sameParam(a, b any) bool {
 // A combination that traded a shorter window — a warm-up that consumed more
 // history, say — is not comparable to one that did not, and silently padding
 // it would corrupt every split it appeared in.
+// mergeGrids applies caller-supplied grids to the strategy's declarations.
+//
+// A caller grid wins over a declared one and may introduce a parameter the
+// strategy never declared — useful for sweeping something like a stop that was
+// written inline.
+//
+// New names are appended in sorted order rather than map order. The set of
+// combinations is the same either way, but their order decides how ties break
+// when the results are ranked, so appending in map order let the same search
+// name a different winner on a second run over identical data.
+func mergeGrids(decls []ParamDecl, grids map[string][]any) []ParamDecl {
+	byName := make(map[string]int, len(decls))
+	for i, d := range decls {
+		byName[d.Name] = i
+	}
+	names := make([]string, 0, len(grids))
+	for name := range grids {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	for _, name := range names {
+		grid := grids[name]
+		if i, ok := byName[name]; ok {
+			decls[i].Grid = grid
+			continue
+		}
+		var def any
+		if len(grid) > 0 {
+			def = grid[0]
+		}
+		decls = append(decls, ParamDecl{Name: name, Default: def, Grid: grid})
+	}
+	return decls
+}
+
 func alignedTrialReturns(returns [][]float64, maxCells int) (bool, [][]float64) {
 	lengths := map[int]int{}
 	for _, r := range returns {

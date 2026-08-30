@@ -225,3 +225,42 @@ func TestRobustnessAssessesTheSearch(t *testing.T) {
 		}
 	}
 }
+
+// Caller-supplied grids arrive in a map, and appending them to the parameter
+// declarations in map order made the expansion order vary between runs. The
+// set of combinations is the same either way, but their order decides how
+// ties break when the table is ranked, so the same search could name a
+// different winner twice over identical data.
+func TestCallerGridsExpandInAStableOrder(t *testing.T) {
+	var first []string
+	for run := 0; run < 8; run++ {
+		ss := SweepSpec{
+			Grids: map[string][]any{
+				"zeta":  {1.0, 2.0},
+				"alpha": {3.0, 4.0},
+				"mid":   {5.0},
+			},
+		}
+		decls := mergeGrids(nil, ss.Grids)
+		got := make([]string, len(decls))
+		for i, d := range decls {
+			got[i] = d.Name
+		}
+		if run == 0 {
+			first = got
+			continue
+		}
+		for i := range first {
+			if got[i] != first[i] {
+				t.Fatalf("run %d ordered parameters %v, run 0 ordered them %v",
+					run, got, first)
+			}
+		}
+	}
+	want := []string{"alpha", "mid", "zeta"}
+	for i := range want {
+		if first[i] != want[i] {
+			t.Fatalf("parameters were %v, want them sorted as %v", first, want)
+		}
+	}
+}
