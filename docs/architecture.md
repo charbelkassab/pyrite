@@ -27,19 +27,36 @@ Inside `engine`, the files split along what they answer:
 
 ```
 engine.go        the daily loop
-portfolio.go     cash, positions, fills, financing
+portfolio.go     cash, positions, fills, financing, market impact
 indicators.go    the maths a strategy can call
+indicators2.go   ADX, Stochastic, Ichimoku, SuperTrend and the rest
 jsvm.go          the ctx object handed to the strategy
 metrics.go       the headline numbers
 riskmetrics.go   distribution shape, drawdown persistence, capture
 trades.go        fills paired into round trips, with MAE/MFE
 attribution.go   by year, by regime, by holding, and stress tests
+optimize.go      min-variance, risk parity, HRP, Ledoit-Wolf shrinkage
 params.go        declared tunables and grid expansion
 sweep.go         the parallel search
 walkforward.go   rolling train/test evaluation
 robustness.go    deflated Sharpe, PBO, bootstrap, plateau
+costs.go         the same strategy at several friction levels
+agent.go         guided search, and the holdout wall
 critique.go      what is wrong with this result
+report.go        all of the above, as one document
 manifest.go      provenance
+```
+
+And in `market`, the reference data that decides what a backtest can honestly
+claim:
+
+```
+yahoo.go         the default price source
+providers.go     the fallback chain, Stooq, and a local CSV directory
+edgar.go         point-in-time share counts from SEC filings
+index.go         point-in-time index membership
+fred.go          economic series, with publication lag applied
+fundamentals.go  market-cap ranking over the share-count table
 ```
 
 ## The request path
