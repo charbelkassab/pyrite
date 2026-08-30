@@ -50,8 +50,10 @@ type Fold struct {
 	// BestParams is what won in training and was then applied to the test
 	// window untouched.
 	BestParams map[string]any `json:"best_params"`
-	TrainScore float64        `json:"train_score"`
-	TestScore  float64        `json:"test_score"`
+	// Scores are Ratios so an undefined objective marshals to null rather
+	// than refusing to encode and truncating the whole response.
+	TrainScore Ratio `json:"train_score"`
+	TestScore  Ratio `json:"test_score"`
 
 	TrainMetrics Metrics `json:"train_metrics"`
 	TestMetrics  Metrics `json:"test_metrics"`
@@ -210,7 +212,7 @@ func RunWalkForward(ctx context.Context, ws WalkForwardSpec, store *market.Store
 			continue
 		}
 		f.TestMetrics = tr.Metrics
-		f.TestScore = score(tr)
+		f.TestScore = Ratio(score(tr))
 		f.TestCurve = tr.Curve
 
 		// Each fold starts where the last one finished, so the stitched line

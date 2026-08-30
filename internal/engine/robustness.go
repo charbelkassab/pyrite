@@ -77,10 +77,10 @@ func AssessRobustness(rows []SweepRow, objective string) Robustness {
 	scores := make([]float64, 0, len(rows))
 	var positive int
 	for _, row := range rows {
-		if row.Error != "" || math.IsNaN(row.Score) || math.IsInf(row.Score, 0) {
+		if row.Error != "" || !row.Score.Defined() {
 			continue
 		}
-		scores = append(scores, row.Score)
+		scores = append(scores, float64(row.Score))
 		if row.Score > 0 {
 			positive++
 		}
@@ -198,7 +198,7 @@ func (r *Robustness) AddDeflatedSharpe(bestCurve []EquityPoint, trialScores []fl
 func plateauRatio(rows []SweepRow) (Ratio, int) {
 	var best *SweepRow
 	for i := range rows {
-		if rows[i].Error != "" || math.IsNaN(rows[i].Score) {
+		if rows[i].Error != "" || !rows[i].Score.Defined() {
 			continue
 		}
 		if best == nil || rows[i].Score > best.Score {
@@ -250,7 +250,7 @@ func plateauRatio(rows []SweepRow) (Ratio, int) {
 	var sum float64
 	var n int
 	for _, row := range rows {
-		if row.Error != "" || math.IsNaN(row.Score) {
+		if row.Error != "" || !row.Score.Defined() {
 			continue
 		}
 		diffs := 0
@@ -266,7 +266,7 @@ func plateauRatio(rows []SweepRow) (Ratio, int) {
 			}
 		}
 		if diffs == 1 && adjacent {
-			sum += row.Score
+			sum += float64(row.Score)
 			n++
 		}
 	}
@@ -277,11 +277,12 @@ func plateauRatio(rows []SweepRow) (Ratio, int) {
 	if best.Score == 0 {
 		return Ratio(math.NaN()), n
 	}
+	bestScore := float64(best.Score)
 	// Clamp: a neighbour scoring higher than the "best" cannot happen, and a
 	// neighbour deep in the negative should read as zero support, not as a
 	// large negative ratio nobody can interpret.
-	ratio := mean / best.Score
-	if best.Score < 0 {
+	ratio := mean / bestScore
+	if bestScore < 0 {
 		ratio = 0
 	}
 	return Ratio(math.Max(0, math.Min(1, ratio))), n

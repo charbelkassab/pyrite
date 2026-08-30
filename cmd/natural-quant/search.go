@@ -323,8 +323,8 @@ func printSweep(plan *strategy.Plan, res *engine.SweepResult, top int, heatmap b
 			fmt.Printf("  %-28s %9s   %s\n", truncate(r.Label, 28), "—", truncate(r.Error, 40))
 			continue
 		}
-		fmt.Printf("  %-28s %9.3f %10s %10s %10d %7s\n",
-			truncate(r.Label, 28), r.Score, pct(r.TotalReturn),
+		fmt.Printf("  %-28s %9s %10s %10s %10d %7s\n",
+			truncate(r.Label, 28), ratio(r.Score), pct(r.TotalReturn),
 			pct(r.MaxDrawdown), r.Trades, pct(r.WinRate))
 	}
 	if len(rows) > top {
@@ -516,7 +516,7 @@ func writeSweepCSV(path string, res *engine.SweepResult) error {
 			rec = append(rec, engine.FormatParams(map[string]any{"": r.Params[ax]})[1:])
 		}
 		rec = append(rec,
-			num(r.Score), num(r.TotalReturn), num(r.CAGR),
+			num(float64(r.Score)), num(r.TotalReturn), num(r.CAGR),
 			num(float64(r.Sharpe)), num(float64(r.Sortino)), num(float64(r.Calmar)),
 			num(r.MaxDrawdown), num(r.Volatility), strconv.Itoa(r.Trades),
 			num(r.WinRate), num(r.Turnover), num(r.UlcerIndex), num(r.Expectancy), r.Error)
@@ -547,7 +547,7 @@ func writeFoldsCSV(path string, res *engine.WalkForwardResult) error {
 			string(fold.TestStart), string(fold.TestEnd),
 			engine.FormatParams(fold.BestParams),
 			num(fold.TrainMetrics.TotalReturn), num(fold.TestMetrics.TotalReturn),
-			num(fold.TrainScore), num(fold.TestScore), fold.Error,
+			num(float64(fold.TrainScore)), num(float64(fold.TestScore)), fold.Error,
 		}); err != nil {
 			return err
 		}

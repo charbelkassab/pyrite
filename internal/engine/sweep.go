@@ -46,7 +46,11 @@ type SweepSpec struct {
 type SweepRow struct {
 	Params map[string]any `json:"params"`
 	Label  string         `json:"label"`
-	Score  float64        `json:"score"`
+	// Score is a Ratio, not a float64, so that a failed or undefined
+	// combination marshals to null. encoding/json refuses NaN outright, and
+	// a single such cell would otherwise truncate the entire response — the
+	// same trap Metrics already avoids for the same reason.
+	Score Ratio `json:"score"`
 
 	TotalReturn float64 `json:"total_return"`
 	CAGR        float64 `json:"cagr"`
@@ -269,9 +273,9 @@ func RunSweep(ctx context.Context, ss SweepSpec, store *market.Store, progress S
 				row := SweepRow{Params: combos[i], Label: FormatParams(combos[i])}
 				if err != nil {
 					row.Error = truncateErr(err.Error())
-					row.Score = math.NaN()
+					row.Score = Ratio(math.NaN())
 				} else {
-					row.Score = score(r)
+					row.Score = Ratio(score(r))
 					row.TotalReturn = r.Metrics.TotalReturn
 					row.CAGR = r.Metrics.CAGR
 					row.Sharpe = r.Metrics.Sharpe
@@ -297,8 +301,8 @@ func RunSweep(ctx context.Context, ss SweepSpec, store *market.Store, progress S
 					if firstEr == nil {
 						firstEr = err
 					}
-				} else if !math.IsNaN(row.Score) {
-					best = append(best, kept{row.Score, r})
+				} else if row.Score.Defined() {
+					best = append(best, kept{float64(row.Score), r})
 					sort.Slice(best, func(a, b int) bool { return best[a].score > best[b].score })
 					if len(best) > ss.KeepBest {
 						best = best[:ss.KeepBest]
@@ -358,9 +362,9 @@ func RunSweep(ctx context.Context, ss SweepSpec, store *market.Store, progress S
 func (r *SweepResult) Sorted() []SweepRow {
 	out := append([]SweepRow(nil), r.Rows...)
 	sort.SliceStable(out, func(i, j int) bool {
-		ai, aj := math.IsNaN(out[i].Score), math.IsNaN(out[j].Score)
+		ai, aj := out[i].Score.Defined(), out[j].Score.Defined()
 		if ai != aj {
-			return aj
+			return ai
 		}
 		return out[i].Score > out[j].Score
 	})
@@ -371,8 +375,8 @@ func (r *SweepResult) Sorted() []SweepRow {
 func (r *SweepResult) Scores() []float64 {
 	out := make([]float64, 0, len(r.Rows))
 	for _, row := range r.Rows {
-		if !math.IsNaN(row.Score) && !math.IsInf(row.Score, 0) {
-			out = append(out, row.Score)
+		if row.Score.Defined() {
+			out = append(out, float64(row.Score))
 		}
 	}
 	return out
@@ -424,7 +428,7 @@ func (r *SweepResult) Surface(xAxis, yAxis string) (xs, ys []any, z [][]float64)
 		if xi < 0 || yi < 0 {
 			continue
 		}
-		z[yi][xi] = row.Score
+		z[yi][xi] = float64(row.Score)
 	}
 	return xs, ys, z
 }

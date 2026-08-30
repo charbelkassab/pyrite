@@ -66,6 +66,8 @@ func (s *Server) routes() {
 
 	m.HandleFunc("POST /api/compile", s.handleCompile)
 	m.HandleFunc("POST /api/runs", s.handleCreateRun)
+	m.HandleFunc("POST /api/sweeps", s.handleCreateSweep)
+	m.HandleFunc("GET /api/objectives", s.handleObjectives)
 	m.HandleFunc("GET /api/runs", s.handleListRuns)
 	m.HandleFunc("GET /api/runs/{id}", s.handleGetRun)
 	m.HandleFunc("DELETE /api/runs/{id}", s.handleDeleteRun)
@@ -337,6 +339,43 @@ func (s *Server) handleCreateRun(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusAccepted, map[string]string{"id": run.ID})
 }
 
+// planFor produces the strategy to run, either from supplied code or by
+// compiling the prompt. It reports failure through the run rather than
+// returning an error, because every caller does the same thing with one.
+func (s *Server) planFor(ctx context.Context, run *Run, req runRequest, opts app.RunOptions) (*strategy.Plan, bool) {
+	if strings.TrimSpace(req.Code) != "" {
+		// Running supplied code directly: no model call needed.
+		plan := &strategy.Plan{
+			Name:       defaultString(req.Name, "Custom strategy"),
+			Code:       req.Code,
+			Universe:   opts.Universe,
+			Benchmarks: opts.Benchmarks,
+			Warmup:     req.Warmup,
+			AllowShort: req.AllowShort,
+		}
+		if len(plan.Universe) == 0 {
+			plan.Universe = market.ResolveUniverse("megacap")
+		}
+		return plan, true
+	}
+
+	run.update(func(r *Run) { r.Status = StatusCompiling; r.Stage = "compiling strategy" })
+	run.publish(Event{Type: "status", Run: run.snapshot(false)})
+
+	plan, err := s.app.Compiler.Compile(ctx, strategy.Request{
+		Prompt:   req.Prompt,
+		Universe: opts.Universe,
+		Start:    opts.Start,
+		End:      opts.End,
+	})
+	if err != nil {
+		run.update(func(r *Run) { r.Status = StatusError; r.Error = err.Error() })
+		run.publish(Event{Type: "error", Run: run.snapshot(false)})
+		return nil, false
+	}
+	return plan, true
+}
+
 // execute compiles and runs a backtest, publishing progress as it goes.
 func (s *Server) execute(ctx context.Context, run *Run, req runRequest) {
 	defer func() {
@@ -378,36 +417,9 @@ func (s *Server) execute(ctx context.Context, run *Run, req runRequest) {
 	}
 	opts.ApplyDefaults()
 
-	var plan *strategy.Plan
-	if strings.TrimSpace(req.Code) != "" {
-		// Running supplied code directly: no model call needed.
-		plan = &strategy.Plan{
-			Name:       defaultString(req.Name, "Custom strategy"),
-			Code:       req.Code,
-			Universe:   opts.Universe,
-			Benchmarks: opts.Benchmarks,
-			Warmup:     req.Warmup,
-			AllowShort: req.AllowShort,
-		}
-		if len(plan.Universe) == 0 {
-			plan.Universe = market.ResolveUniverse("megacap")
-		}
-	} else {
-		run.update(func(r *Run) { r.Status = StatusCompiling; r.Stage = "compiling strategy" })
-		run.publish(Event{Type: "status", Run: run.snapshot(false)})
-
-		var err error
-		plan, err = s.app.Compiler.Compile(ctx, strategy.Request{
-			Prompt:   req.Prompt,
-			Universe: opts.Universe,
-			Start:    opts.Start,
-			End:      opts.End,
-		})
-		if err != nil {
-			run.update(func(r *Run) { r.Status = StatusError; r.Error = err.Error() })
-			run.publish(Event{Type: "error", Run: run.snapshot(false)})
-			return
-		}
+	plan, ok := s.planFor(ctx, run, req, opts)
+	if !ok {
+		return
 	}
 
 	// A strategy that consults a model every week cannot be run over the full
@@ -725,4 +737,194 @@ func firstLine(s string, max int) string {
 		s = s[:max-1] + "…"
 	}
 	return s
+}
+
+// sweepRequest is a runRequest plus the shape of the search.
+type sweepRequest struct {
+	runRequest
+	// Grids overrides what the strategy declared, e.g. {"fast": [10, 20, 50]}.
+	Grids     map[string][]any `json:"grids,omitempty"`
+	Objective string           `json:"objective,omitempty"`
+	MaxCombos int              `json:"max_combos,omitempty"`
+	Workers   int              `json:"workers,omitempty"`
+
+	// WalkForward switches from a single search over the whole period to a
+	// rolling train/test evaluation.
+	WalkForward bool `json:"walk_forward,omitempty"`
+	TrainDays   int  `json:"train_days,omitempty"`
+	TestDays    int  `json:"test_days,omitempty"`
+	Embargo     int  `json:"embargo,omitempty"`
+	Anchored    bool `json:"anchored,omitempty"`
+}
+
+// handleObjectives lists the metrics a search can be ranked by.
+func (s *Server) handleObjectives(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]any{"objectives": engine.ObjectiveNames()})
+}
+
+// handleCreateSweep starts a parameter search or a walk-forward evaluation.
+func (s *Server) handleCreateSweep(w http.ResponseWriter, r *http.Request) {
+	var req sweepRequest
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<20)).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "could not read the request: "+err.Error())
+		return
+	}
+	if strings.TrimSpace(req.Prompt) == "" && strings.TrimSpace(req.Code) == "" {
+		writeError(w, http.StatusBadRequest, "describe a strategy, or supply code directly")
+		return
+	}
+	if strings.TrimSpace(req.Code) == "" && !s.app.Cfg.AnyProviderEnabled() {
+		writeError(w, http.StatusPreconditionFailed,
+			"No model API key is configured, so plain-language strategies cannot be compiled. "+
+				"Set OPENAI_API_KEY, CEREBRAS_API_KEY or KIMI_API_KEY and restart.")
+		return
+	}
+
+	label := req.Name
+	if label == "" {
+		label = firstLine(req.Prompt, 80)
+	}
+	run := s.runs.Create(req.Prompt, label)
+
+	// A search is many backtests, so it gets a proportionally larger budget
+	// than a single run rather than timing out halfway through a grid.
+	timeout := time.Duration(s.app.Cfg.StrategyTimeoutSec) * time.Second * 10
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	run.cancel = cancel
+
+	go s.executeSweep(ctx, run, req)
+	writeJSON(w, http.StatusAccepted, map[string]string{"id": run.ID})
+}
+
+// executeSweep searches a strategy's parameter space, publishing progress.
+func (s *Server) executeSweep(ctx context.Context, run *Run, req sweepRequest) {
+	defer func() {
+		if run.cancel != nil {
+			run.cancel()
+		}
+		close(run.finished)
+		if s.runs != nil {
+			_ = s.runs.Save(run)
+		}
+	}()
+	defer func() {
+		if rec := recover(); rec != nil {
+			run.update(func(r *Run) {
+				r.Status = StatusError
+				r.Error = fmt.Sprintf("the search failed unexpectedly: %v", rec)
+			})
+			run.publish(Event{Type: "error", Run: run.snapshot(false)})
+		}
+	}()
+
+	opts := app.RunOptions{
+		InitialCash: req.InitialCash,
+		Benchmarks:  market.DedupeSymbols(req.Benchmarks),
+		Universe:    market.DedupeSymbols(req.Universe),
+		MaxLeverage: req.MaxLeverage,
+		RiskFree:    req.RiskFree,
+	}
+	if req.Start != "" {
+		opts.Start = market.Day(req.Start)
+	}
+	if req.End != "" {
+		opts.End = market.Day(req.End)
+	}
+	if req.Fill == string(engine.FillClose) {
+		opts.Fill = engine.FillClose
+	}
+	opts.ApplyDefaults()
+
+	plan, ok := s.planFor(ctx, run, req.runRequest, opts)
+	if !ok {
+		return
+	}
+
+	// A search runs the strategy hundreds of times. One that calls a model
+	// on every simulated day would make hundreds of thousands of requests,
+	// so it is refused rather than quietly started.
+	if plan.NeedsAI || plan.NeedsWeb {
+		run.update(func(r *Run) {
+			r.Status = StatusError
+			r.Error = "this strategy calls a model or the web inside the backtest, so it cannot be swept: " +
+				"a search would multiply those calls by the number of combinations. Run it once instead."
+		})
+		run.publish(Event{Type: "error", Run: run.snapshot(false)})
+		return
+	}
+
+	run.update(func(r *Run) {
+		r.Plan = plan
+		r.Status = StatusRunning
+		r.Stage = "searching"
+		if r.Label == "" {
+			r.Label = plan.Name
+		}
+	})
+	run.publish(Event{Type: "status", Run: run.snapshot(false)})
+
+	spec := app.BuildSpec(plan, req.Prompt, opts)
+	if req.Warmup > 0 {
+		spec.Warmup = req.Warmup
+	}
+	if req.AllowShort {
+		spec.AllowShort = true
+	}
+	if req.SlippageBps > 0 {
+		spec.Costs.SlippageBps = req.SlippageBps
+	}
+	if req.CommissionPct > 0 {
+		spec.Costs.CommissionPct = req.CommissionPct
+	}
+
+	var err error
+	if req.WalkForward {
+		var wf *engine.WalkForwardResult
+		wf, err = engine.RunWalkForward(ctx, engine.WalkForwardSpec{
+			Base: spec, Grids: req.Grids, TrainDays: req.TrainDays, TestDays: req.TestDays,
+			Embargo: req.Embargo, Anchored: req.Anchored, Objective: req.Objective,
+			Workers: req.Workers, MaxCombos: req.MaxCombos,
+		}, s.app.Store, func(fold, total int) {
+			run.update(func(r *Run) {
+				r.Progress = fold * 100 / max(1, total)
+				r.Stage = fmt.Sprintf("fold %d of %d", fold, total)
+			})
+			run.publish(Event{Type: "progress", Run: run.snapshot(false)})
+		})
+		if err == nil {
+			run.update(func(r *Run) { r.WalkForward = wf })
+		}
+	} else {
+		var sw *engine.SweepResult
+		sw, err = engine.RunSweep(ctx, engine.SweepSpec{
+			Base: spec, Grids: req.Grids, Objective: req.Objective,
+			MaxCombos: req.MaxCombos, Workers: req.Workers, KeepBest: 1,
+		}, s.app.Store, func(done, total int, row engine.SweepRow) {
+			run.update(func(r *Run) {
+				r.Progress = done * 100 / max(1, total)
+				r.Stage = fmt.Sprintf("%d of %d combinations", done, total)
+			})
+			run.publish(Event{Type: "progress", Run: run.snapshot(false)})
+		})
+		if err == nil {
+			run.update(func(r *Run) { r.Sweep = sw })
+		}
+	}
+
+	if err != nil {
+		status := StatusError
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			status = StatusCancelled
+		}
+		run.update(func(r *Run) { r.Status = status; r.Error = err.Error() })
+		run.publish(Event{Type: "error", Run: run.snapshot(false)})
+		return
+	}
+
+	run.update(func(r *Run) {
+		r.Status = StatusDone
+		r.Progress = 100
+		r.Stage = ""
+	})
+	run.publish(Event{Type: "done", Run: run.snapshot(true)})
 }

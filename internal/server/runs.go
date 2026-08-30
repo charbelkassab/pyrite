@@ -42,7 +42,13 @@ type Run struct {
 
 	Plan   *strategy.Plan `json:"plan,omitempty"`
 	Result *engine.Result `json:"result,omitempty"`
-	Error  string         `json:"error,omitempty"`
+	// Sweep is set instead of Result when this run was a parameter search.
+	// A sweep shares the whole run lifecycle — progress, SSE, cancellation,
+	// persistence — because it is the same thing many times over, and a
+	// parallel store for it would be duplication rather than design.
+	Sweep       *engine.SweepResult       `json:"sweep,omitempty"`
+	WalkForward *engine.WalkForwardResult `json:"walk_forward,omitempty"`
+	Error       string                    `json:"error,omitempty"`
 
 	mu       sync.RWMutex
 	subs     map[chan Event]struct{}
@@ -69,6 +75,8 @@ func (r *Run) snapshot(includeResult bool) *Run {
 	}
 	if includeResult {
 		c.Result = r.Result
+		c.Sweep = r.Sweep
+		c.WalkForward = r.WalkForward
 	}
 	return c
 }
