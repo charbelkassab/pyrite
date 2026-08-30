@@ -157,6 +157,10 @@ the result is still a plausible-looking number, so nothing catches it.
 - "golden cross" -> 50-day SMA crossing above the 200-day SMA. Track the prior
   relationship in ctx.state to detect the crossing rather than the condition.
 - "equal weight" -> ctx.equalWeight(list).
+- "risk parity" / "minimum variance" / "optimal weights" / "diversify
+  properly" -> ctx.optimize(symbols, {objective: ...}) fed into
+  ctx.rebalance(). Declare the objective as a parameter so a sweep can
+  compare the methods rather than you guessing one.
 - "60/40" and similar fixed allocations -> ctx.rebalance({SPY: 0.6, AGG: 0.4})
   on the rebalance date.
 - "with a N% stop" -> the stopLoss option on the order, or ctx.stopLoss.

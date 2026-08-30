@@ -440,9 +440,12 @@ function onDay(ctx) {
 }
 ```
 
-`ctx` gives you prices and history, ~15 indicators, market-cap ranking, portfolio
+`ctx` gives you prices and history, ~35 indicators, market-cap ranking, portfolio
 state, order placement by shares / dollars / target weight, stop-loss, take-profit
-and trailing stops, calendar helpers, persistent state, and the AI and web hooks.
+and trailing stops, portfolio construction (`ctx.optimize` — minimum variance,
+maximum Sharpe, risk parity, hierarchical risk parity, with Ledoit–Wolf
+shrinkage), declared parameters, calendar helpers, persistent state, and the AI
+and web hooks.
 Full reference: [`internal/strategy/assets/api.md`](internal/strategy/assets/api.md).
 
 You can edit the generated code in the **Code** tab and re-run it directly — the

@@ -463,6 +463,66 @@ func (v *strategyVM) installContext() error {
 		}
 	})
 
+	// ---- Portfolio construction ----------------------------------------
+
+	// optimize(symbols, opts) returns weights that sum to one, ready to hand
+	// straight to ctx.rebalance().
+	//
+	//   ctx.rebalance(ctx.optimize(names, { objective: "hrp", lookback: 252 }))
+	set("optimize", func(call goja.FunctionCall) goja.Value {
+		syms := toSymbolList(call.Argument(0).Export())
+		if len(syms) == 0 {
+			return rt.ToValue(map[string]any{})
+		}
+
+		opts := OptimizeOptions{Objective: ObjMinVariance, Shrinkage: -1, LongOnly: true}
+		lookback := 252
+		if len(call.Arguments) > 1 {
+			if m, ok := call.Argument(1).Export().(map[string]any); ok {
+				if v, ok := m["objective"].(string); ok && v != "" {
+					opts.Objective = Objective(v)
+				}
+				if n, ok := toFloatOK(m["lookback"]); ok && n > 0 {
+					lookback = int(n)
+				}
+				if v, ok := toFloatOK(m["shrinkage"]); ok {
+					opts.Shrinkage = v
+				}
+				if v, ok := toFloatOK(firstKey(m, "maxWeight", "max_weight")); ok {
+					opts.MaxWeight = v
+				}
+				if v, ok := m["longOnly"].(bool); ok {
+					opts.LongOnly = v
+				}
+			}
+		}
+		opts.RiskFree = e.spec.RiskFreeRate
+
+		// Only symbols with a full window contribute. A name that listed
+		// halfway through the lookback has no comparable covariance, and
+		// padding it would fabricate a correlation that was never observed.
+		var kept []string
+		var series [][]float64
+		for _, sym := range syms {
+			r := Returns(e.closes(sym, lookback+1))
+			if len(r) < lookback {
+				continue
+			}
+			kept = append(kept, sym)
+			series = append(series, r[len(r)-lookback:])
+		}
+		if len(kept) == 0 {
+			return rt.ToValue(map[string]any{})
+		}
+
+		w := Optimize(series, opts)
+		out := make(map[string]any, len(kept))
+		for i, sym := range kept {
+			out[sym] = w[i]
+		}
+		return rt.ToValue(out)
+	})
+
 	set("correlation", func(a, b string, n int) any {
 		n = defInt(n, 60)
 		ra, rb := Returns(e.closes(a, n+1)), Returns(e.closes(b, n+1))

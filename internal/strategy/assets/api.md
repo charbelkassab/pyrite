@@ -206,6 +206,46 @@ ctx.equalWeight(["AAPL", "MSFT", "NVDA"]);        // 1/3 each
 ctx.equalWeight(winners, 0.8);                     // 80% invested, 20% cash
 ```
 
+## Portfolio construction
+
+`ctx.optimize(symbols, opts)` returns weights summing to one, ready to hand
+straight to `ctx.rebalance()`.
+
+```js
+function onDay(ctx) {
+  if (!ctx.isFirstTradingDayOfMonth()) return;
+  const w = ctx.optimize(ctx.universe(), { objective: "hrp", lookback: 252 });
+  ctx.rebalance(w);
+}
+```
+
+| `objective` | What it does |
+| --- | --- |
+| `"min_variance"` | the lowest-variance combination (default) |
+| `"max_sharpe"` | the tangency portfolio, using the run's risk-free rate |
+| `"risk_parity"` | every holding contributes the same share of total risk |
+| `"hrp"` | hierarchical risk parity — clusters by correlation, never inverts the covariance matrix |
+| `"inverse_vol"` | weight by 1/volatility, the crude version of risk parity |
+| `"equal"` | the baseline the others have to beat |
+
+Other options: `lookback` (bars of history, default 252), `maxWeight` (a
+per-holding cap), `longOnly` (default true), and `shrinkage` — how far to blend
+the covariance matrix toward its diagonal, defaulting to the Ledoit–Wolf
+estimate chosen from the data.
+
+**Why shrinkage is on by default.** A covariance matrix estimated from 252 days
+across 30 assets is mostly noise, and `min_variance` and `max_sharpe` invert it,
+which amplifies exactly that noise into confident, wrong weights. Shrinking
+toward the diagonal is what stops the optimiser betting the portfolio on a
+correlation that was never really there. `hrp` sidesteps the problem entirely by
+never inverting anything, which is the reason to prefer it when the universe is
+large relative to the history.
+
+Symbols without a full lookback window are excluded rather than padded: a name
+that listed halfway through has no comparable covariance, and filling it in
+would fabricate a correlation nobody observed. Declare the method as a parameter
+and let a sweep tell you which one your universe actually rewards.
+
 Optional keys on any order object: `limit`, `reason`, `tag`. `reason` is shown
 in the day-detail view and is worth setting — it is how a reader understands
 why a trade happened.
