@@ -675,3 +675,114 @@ func printAgent(res *engine.AgentResult) {
 	}
 	printCritique(res.Holdout)
 }
+
+// cmdReport runs the full battery and writes a document.
+func cmdReport(args []string) error {
+	fs := flag.NewFlagSet("report", flag.ContinueOnError)
+	params, objective, _, workers, maxCombos, cash, from, to, universe, benchmark, offline, asJSON :=
+		addCommonSearchFlags(fs)
+	codeFile, warmup := addCodeFileFlags(fs)
+	out := fs.String("out", "", "write the report here instead of stdout")
+	skipSweep := fs.Bool("no-sweep", false, "skip the parameter search")
+	skipWF := fs.Bool("no-walkforward", false, "skip the walk-forward evaluation")
+	train := fs.Int("train", 504, "walk-forward training window in sessions")
+	test := fs.Int("test", 126, "walk-forward test window in sessions")
+
+	prompt, flagArgs := splitPromptAndFlags(args)
+	if err := fs.Parse(flagArgs); err != nil {
+		return err
+	}
+	prompt = strings.TrimSpace(strings.Join(append([]string{prompt}, fs.Args()...), " "))
+	if prompt == "" && *codeFile == "" {
+		return fmt.Errorf("describe a strategy to report on, or pass --code-file")
+	}
+
+	s, err := prepareSearch(fs, prompt, searchOpts{
+		offline: offline, cash: *cash, from: *from, to: *to,
+		universe: *universe, benchmark: *benchmark,
+		codeFile: *codeFile, warmup: *warmup,
+	})
+	if err != nil {
+		return err
+	}
+	defer s.cancel()
+
+	rep := &engine.Report{
+		Title:       s.plan.Name,
+		Prompt:      prompt,
+		Generated:   time.Now(),
+		Assumptions: s.plan.Assumptions,
+		Limitations: s.plan.Limitations,
+	}
+
+	// 1. The full-period backtest, which everything else contextualises.
+	fmt.Fprintf(os.Stderr, "backtesting...\n")
+	rep.Run, err = engine.New(s.spec, s.app.Store).Run(s.ctx)
+	if err != nil {
+		return err
+	}
+
+	// 2. The parameter space, if the strategy declares one.
+	if !*skipSweep {
+		fmt.Fprintf(os.Stderr, "searching the parameter space...\n")
+		sw, err := engine.RunSweep(s.ctx, engine.SweepSpec{
+			Base: s.spec, Grids: params.grids, Objective: *objective,
+			MaxCombos: *maxCombos, Workers: *workers, KeepBest: 1,
+		}, s.app.Store, nil)
+		if err != nil {
+			// A strategy with no declared parameters has no space to search.
+			// That is a fact about the strategy, not a failure of the report.
+			fmt.Fprintf(os.Stderr, "  skipped: %s\n", truncate(err.Error(), 70))
+		} else {
+			rep.Sweep = sw
+		}
+	}
+
+	// 3. Out of sample.
+	if !*skipWF {
+		fmt.Fprintf(os.Stderr, "walking forward...\n")
+		wf, err := engine.RunWalkForward(s.ctx, engine.WalkForwardSpec{
+			Base: s.spec, Grids: params.grids, TrainDays: *train, TestDays: *test,
+			Objective: *objective, Workers: *workers, MaxCombos: *maxCombos,
+		}, s.app.Store, nil)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "  skipped: %s\n", truncate(err.Error(), 70))
+		} else {
+			rep.WalkForward = wf
+		}
+	}
+
+	// 4. Cost sensitivity and the bootstrap, both cheap once the rest is done.
+	fmt.Fprintf(os.Stderr, "scanning costs...\n")
+	if scan, err := engine.RunCostScan(s.ctx, s.spec, s.app.Store, nil); err == nil {
+		rep.Costs = scan
+	}
+	rep.Bootstrap = engine.Bootstrap(rep.Run.Curve, 2000, 21, s.spec.Seed)
+
+	// 5. The prose, when a model is available. Everything above stands
+	//    without it, so a missing key costs a paragraph, not the document.
+	if s.app.Cfg.AnyProviderEnabled() {
+		fmt.Fprintf(os.Stderr, "writing the summary...\n")
+		if narrative, err := s.app.Narrate(s.ctx, rep); err == nil {
+			rep.Narrative = narrative
+		} else {
+			fmt.Fprintf(os.Stderr, "  skipped: %s\n", truncate(err.Error(), 70))
+		}
+	}
+
+	if *asJSON {
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		return enc.Encode(rep)
+	}
+	doc := rep.Markdown()
+	if *out == "" {
+		fmt.Print(doc)
+		return nil
+	}
+	if err := os.WriteFile(*out, []byte(doc), 0o644); err != nil {
+		return err
+	}
+	fmt.Fprintf(os.Stderr, "wrote %s (%d bytes)\n", *out, len(doc))
+	return nil
+}

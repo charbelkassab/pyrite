@@ -521,6 +521,8 @@ natural-quant walkforward "<strategy>"  # optimise in-sample, report out
                                [--anchored]
 natural-quant improve "<strategy>"      # guided search against a blind holdout
                                [--budget 6] [--holdout 0.3] [--goal "..."]
+natural-quant report "<strategy>"       # the full battery, as one document
+                               [--out report.md] [--no-sweep] [--no-walkforward]
 
 natural-quant ingest edgar --universe megacap --user-agent "You you@example.com"
 natural-quant doctor           # check data, providers, caches
@@ -563,6 +565,25 @@ there is no adjusted column. This is also the only way to backtest **delisted
 securities**, which no free live endpoint serves.
 
 See [docs/data-sources.md](docs/data-sources.md) for more.
+
+---
+
+## The whole thing as a document
+
+```
+natural-quant report "a golden cross on SPY" --out report.md
+```
+
+Runs the backtest, the parameter search, the walk-forward, the cost scan and a
+block bootstrap, then writes one Markdown document: verdict first, then the
+results against the benchmark, the out-of-sample evidence, the robustness
+statistics, where the return came from, what survives friction, the
+distribution of outcomes the same process could have produced, the specific
+objections, the provenance, and the code.
+
+Every number in it is computed. With a model key the document also opens with
+a written summary; without one it is still complete, because the prose is the
+only part a model contributes.
 
 ---
 
