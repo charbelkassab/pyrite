@@ -96,6 +96,17 @@ func New(cfg *config.Config) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Point-in-time news, unless explicitly turned off. This is the default
+	// because the alternative — showing a 2019 backtest what the web says in
+	// 2026 — produces a result that looks like evidence and is not.
+	if searchEnabled && cfg.NewsProvider != "live" && cfg.NewsProvider != "none" {
+		g := websearch.NewGDELT()
+		// The index is a shared free service, so a long backtest must not
+		// hammer it. Answers are cached per simulated day, so only the first
+		// run pays this.
+		searcher.MinInterval = 5 * time.Second
+		searcher.GDELT = g
+	}
 
 	return &App{
 		Cfg:      cfg,
@@ -277,6 +288,7 @@ func (a *App) Backtest(ctx context.Context, spec engine.Spec, opts RunOptions) (
 	eng.MaxAICalls = a.Cfg.MaxAICallsPerRun
 	eng.Progress = opts.Progress
 	eng.Econ = a.Econ
+	eng.NewsIsPointInTime = a.Search != nil && a.Search.NewsIsPointInTime()
 
 	if a.Cfg.AnyProviderEnabled() {
 		eng.AI = a.makeAIFunc(opts.AITier)

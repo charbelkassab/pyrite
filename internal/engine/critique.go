@@ -191,10 +191,21 @@ func Criticise(res *Result) Critique {
 				"model is multiplied by that turnover.", m.Turnover, money(m.TotalCosts))
 	}
 	if res.AICallCount > 0 {
-		add(SeverityCritical, "the strategy consulted a model about the past",
-			"%d model or web calls were made inside the backtest. Those answers were "+
-				"produced by a model that knows what happened after the simulated date. "+
-				"Treat this as a demonstration of a mechanism, not as evidence.", res.AICallCount)
+		detail := "%d model or web calls were made inside the backtest. Those answers were " +
+			"produced by a model that knows what happened after the simulated date. " +
+			"Treat this as a demonstration of a mechanism, not as evidence."
+		if res.NewsPointInTime {
+			// News was date-bounded, so the remaining exposure is the model's
+			// own training, which is milder and worth stating differently
+			// rather than repeating the stronger warning that no longer fits.
+			detail = "%d model calls were made inside the backtest. Headlines were " +
+				"restricted to what had been published by each simulated day, so the " +
+				"severe form of this bias is gone — but the model reading them was " +
+				"trained on text written afterwards and knows how the period ended."
+			add(SeverityWarning, "the model knows how the story ends", detail, res.AICallCount)
+		} else {
+			add(SeverityCritical, "the strategy consulted a model about the past", detail, res.AICallCount)
+		}
 	}
 	if len(res.Manifest.Coverage) > 0 {
 		var late int

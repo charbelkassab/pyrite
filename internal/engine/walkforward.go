@@ -331,8 +331,11 @@ func walkForwardVerdict(r *WalkForwardResult) string {
 		e := float64(r.Efficiency)
 		switch {
 		case e < 0:
+			// Reported as a percentage, matching the table above it. Printing
+			// the bare ratio here made the verdict say "-0.01" beside a table
+			// saying "-0.78%", which reads as two different measurements.
 			out += fmt.Sprintf("; out-of-sample returns are negative against positive in-sample "+
-				"ones (efficiency %.2f), which is the signature of a fitted strategy", e)
+				"ones (efficiency %.1f%%), which is the signature of a fitted strategy", e*100)
 		case e < 0.35:
 			out += fmt.Sprintf("; out-of-sample captured only %.0f%% of in-sample return, so most "+
 				"of the backtest was the search finding the sample rather than an edge", e*100)

@@ -175,3 +175,26 @@ func TestWalkForwardEfficiencyIsDefined(t *testing.T) {
 		t.Error("a defined efficiency must not be NaN")
 	}
 }
+
+func TestVerdictReportsEfficiencyAsAPercentage(t *testing.T) {
+	// The table prints efficiency as a percentage. A verdict printing the
+	// bare ratio beside it reads as two different measurements.
+	res := &WalkForwardResult{
+		Folds:           make([]Fold, 20),
+		StitchedMetrics: Metrics{},
+		InSampleReturn:  0.2186,
+		OutOfSampleMean: -0.0017,
+		Efficiency:      Ratio(-0.0078),
+		ConsistentFolds: 3,
+	}
+	v := walkForwardVerdict(res)
+	if strings.Contains(v, "efficiency -0.01)") {
+		t.Errorf("the verdict printed a bare ratio: %q", v)
+	}
+	if !strings.Contains(v, "%)") {
+		t.Errorf("efficiency should be a percentage: %q", v)
+	}
+	if !strings.Contains(v, "signature of a fitted strategy") {
+		t.Errorf("a negative efficiency should be named: %q", v)
+	}
+}

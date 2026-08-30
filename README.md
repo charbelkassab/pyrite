@@ -1,26 +1,29 @@
 <div align="center">
 
-# pyrite
+<h1>pyrite</h1>
 
 **Most backtests are fool's gold. This one tells you which.**
 
-pyrite is a backtester that spends as much effort trying to disprove your
-strategy as it does running it. Describe an idea in plain English, and get back
-an equity curve *and* the specific reasons not to believe it.
+A backtester that spends as much effort trying to disprove your strategy as it
+does running it. Describe an idea in plain English, and get back an equity
+curve *and* the specific reasons not to believe it.
 
 [![CI](https://github.com/charbelkassab/pyrite/actions/workflows/ci.yml/badge.svg)](https://github.com/charbelkassab/pyrite/actions/workflows/ci.yml)
 [![Go Reference](https://pkg.go.dev/badge/github.com/charbelkassab/pyrite.svg)](https://pkg.go.dev/github.com/charbelkassab/pyrite)
 [![Go Report Card](https://goreportcard.com/badge/github.com/charbelkassab/pyrite)](https://goreportcard.com/report/github.com/charbelkassab/pyrite)
 [![Release](https://img.shields.io/github/v/release/charbelkassab/pyrite?sort=semver)](https://github.com/charbelkassab/pyrite/releases)
-[![License: MIT](https://img.shields.io/badge/licence-MIT-blue.svg)](LICENSE)
+[![Licence: MIT](https://img.shields.io/badge/licence-MIT-blue.svg)](LICENSE)
 
-[Try it in 30 seconds](#try-it-in-30-seconds) ·
-[Install](#install) ·
+[**Try it**](#try-it-in-30-seconds) ·
 [Why](#why-this-exists) ·
-[Searching](#one-backtest-is-not-evidence) ·
-[Improving](#make-this-better-without-the-usual-trap) ·
+[Install](#install) ·
+[Tour](#a-tour-in-four-commands) ·
+[What it measures](#what-it-measures) ·
+[Honest data](#the-data-is-the-hard-part) ·
 [Python](#from-python) ·
-[Limitations](#limitations-please-read)
+[Limitations](#what-it-cannot-tell-you)
+
+<br>
 
 ![Two strategies charted against the S&P 500, with the metrics table below](docs/images/screenshot-chart.png)
 
@@ -49,7 +52,7 @@ Classic 50/200 moving average crossover with a trailing stop.
   Max drawdown                  -16.07%
 
   Comparison               Total return   Max drawdown
-  Classic 50/200 moving          74.49%        -16.07%
+  Classic 50/200 moving…         74.49%        -16.07%
   State Street SPDR S&P…         95.54%        -33.72%
 
 How much should you believe this?  50/100
@@ -66,7 +69,7 @@ How much should you believe this?  50/100
         being taken.
 ```
 
-That last part is the product. Every other backtester stops at the Sharpe ratio.
+**That last section is the product.** The equity curve is table stakes.
 
 ```bash
 pyrite examples                  # seven bundled strategies, all runnable
@@ -78,14 +81,17 @@ pyrite doctor                    # what works right now, and how to fix the rest
 
 ## Why this exists
 
-Backtesting is the easiest way in finance to fool yourself, and every tool
-makes it easier. Search enough parameters and something will look excellent by
-chance. Pick from today's index and you have quietly excluded every company
-that failed. Charge no commission and a strategy that trades daily looks free.
-None of this shows up in the equity curve, which is the one thing every
-backtester puts on screen.
+Backtesting is the easiest way in finance to fool yourself, and most tools make
+it easier rather than harder.
 
-pyrite computes the things that would tell you:
+Search enough parameters and something looks excellent by chance. Pick from
+today's index and you have quietly excluded every company that failed. Charge
+no commission and a strategy that trades daily looks free. Size a position
+without modelling impact and it scales to infinity. None of this shows up in
+the equity curve — which is the one thing every backtester puts on screen.
+
+pyrite computes the things that would tell you, and says so on every run
+without being asked.
 
 | It measures | So you find out |
 | --- | --- |
@@ -95,27 +101,18 @@ pyrite computes the things that would tell you:
 | **Plateau ratio** | whether the winner sits on a ridge or is a lone spike |
 | **Cost sensitivity** | the slippage at which the edge disappears |
 | **Block bootstrap** | the drawdown to plan around, not the one that happened |
-| **Point-in-time membership** | what the index actually held that day, failures included |
 | **Market impact** | what your size costs, under the square-root law |
-
-And then it says so in a sentence, on every run, without being asked.
+| **Point-in-time membership** | what the index actually held that day, failures included |
+| **Point-in-time news** | what had actually been published by then, not what the web says now |
 
 It is a single Go binary. No accounts, no signup, no telemetry, no cloud
 service, no database. It runs on your laptop and writes to `~/.pyrite`.
-
-Bar sizes run from one minute to one month (`--interval 5m`), and every
-annualised statistic scales with the bar size — a Sharpe computed on 1-minute
-bars and annualised as daily would be out by about twentyfold, flatteringly.
-A strategy can read a coarser timeframe from inside a finer run, so a daily
-trend filter with 5-minute entries is a few lines. Free intraday history is
-short, and [the limitations](docs/limitations.md#intraday-and-what-it-does-not-include)
-say exactly how short.
 
 ---
 
 ## Install
 
-**Prebuilt binary** — [latest release](https://github.com/charbelkassab/pyrite/releases/latest),
+**Prebuilt binary** — [the latest release](https://github.com/charbelkassab/pyrite/releases/latest),
 for Linux, macOS and Windows. Verify against `SHA256SUMS`.
 
 **Go** (needs [Go 1.25+](https://go.dev/dl/)):
@@ -124,10 +121,11 @@ for Linux, macOS and Windows. Verify against `SHA256SUMS`.
 go install github.com/charbelkassab/pyrite/cmd/pyrite@latest
 ```
 
-**Docker**:
+**Docker** — a 27 MB image, non-root, no external services:
 
 ```bash
-docker run --rm -p 8080:8080 ghcr.io/charbelkassab/pyrite serve --addr 0.0.0.0:8080 --offline
+docker run --rm -p 8080:8080 ghcr.io/charbelkassab/pyrite \
+  serve --addr 0.0.0.0:8080 --offline
 # or: docker compose up
 ```
 
@@ -140,14 +138,14 @@ make build && ./pyrite run --example golden-cross
 
 ### Turning on plain English
 
-Everything above works with no model. Compiling a *sentence* into a strategy
+Everything above works with no model. Turning a *sentence* into a strategy
 needs one, and there are two ways to have one:
 
 ```bash
-# Free, on your machine. pyrite finds it automatically.
+# Free, on your machine. pyrite finds it automatically on startup.
 ollama pull qwen2.5-coder:7b
 
-# Or hosted, if you want the better output.
+# Or hosted, for better output.
 export OPENAI_API_KEY=sk-...     # or CEREBRAS_API_KEY, or KIMI_API_KEY
 ```
 
@@ -158,183 +156,156 @@ pyrite run "buy $100 of the biggest company by market cap every day,
             and sell when that company is no longer number one"
 ```
 
-`pyrite doctor` tells you which of these it can see, and what to do if the
-answer is none.
+`pyrite doctor` reports which of these it can see, and what to do if the answer
+is none.
 
 ---
 
-## What you can ask for
+## A tour in four commands
 
-These all work today. Each was compiled from the sentence shown and run against
-real market data as part of the project's [prompt corpus](internal/strategy/testdata/corpus.json).
+The same strategy, looked at four ways. Each one is harder to fool than the
+last, and the story they tell together is the point of the tool.
 
-| Ask | What it does |
-| --- | --- |
-| *"Buy $100 of the biggest company by market cap every day, sell when it is no longer number one."* | Ranks a mega-cap universe by point-in-time market cap daily |
-| *"Buy SPY when the 50 day crosses above the 200 day, sell on the reverse cross, 12% trailing stop."* | Golden cross with a trailing exit |
-| *"Every month hold the 3 best performing big tech stocks over the last 6 months."* | Momentum rotation, monthly rebalance |
-| *"Buy any mega cap whose RSI drops below 30 at 10% of the portfolio, sell above 55, 8% stop."* | Mean reversion with position sizing and risk exits |
-| *"Hold 60% SPY and 40% AGG, rebalanced quarterly."* | Classic fixed allocation |
-| *"Trade KO against PEP when their price ratio is 2 standard deviations from its 60 day average."* | Market-neutral pairs trade with shorting |
-| *"Hold SPY normally but move to cash for a month whenever the VIX closes above 30."* | Volatility regime filter |
-| *"Hold equities only while the yield curve is not inverted."* | Reads real economic data, with publication lag applied |
-| *"Each month hold the 2 strongest S&P 500 sector ETFs by 3 month momentum."* | Sector rotation |
-| *"Every month hold the 20 strongest S&P 500 stocks over the last 6 months."* | Selects from **point-in-time** index membership, not today's list |
-| *"Hold SPY from November through April and cash from May through October."* | Seasonality |
-| *"Once a week read the news about Apple, ask the AI if the tone is positive, hold AAPL if so."* | Calls a model **inside** the backtest |
-| *"Invest $500 into VTI on the first trading day of every month and never sell."* | Dollar-cost averaging |
-| *"Something that beats the market but isn't too risky."* | Vague prompts get a concrete strategy plus its stated assumptions |
+<br>
 
-The strategy that gets built is never a black box. Every run shows you the
-generated code, the assumptions the model made where your wording was ambiguous,
-and the limitations it could not model.
+### 1. `run` — one backtest, and what is wrong with it
 
----
+Everything in [Try it](#try-it-in-30-seconds) above. A curve, the trade-level
+detail behind it, and a critique that reads the result and names the problems.
 
-## The chart
+Add `--cost-scan` to re-run at 0, 5, 20 and 50 bps of slippage. On a
+high-turnover strategy the difference is not subtle:
 
-The comparison view is the point of the tool. Everything on the chart is a
-**view** — a strategy, or any ticker, index or ETF — and each one has its own
-colour, name, and show/hide toggle that you control from the panel on the
-right. Rename them, recolour them, delete them, or edit a strategy's prompt and
-re-run it in place.
+```
+How much survives friction?
+  Slippage             Return         CAGR       Sharpe      Costs
+  0 bps                51.81%        7.22%         0.57      $0.00
+  5 bps               -27.47%       -5.22%        -0.32 $65,100.06
+  20 bps              -92.12%      -34.60%        -3.00 $107,636.50
 
-- **Overlay anything.** Strategies, individual stocks, indices, ETFs, crypto —
-  as many at once as you like, normalised to percentage return so a $100,000
-  portfolio and a $300 share price are honestly comparable.
-- **Runs cover all available history by default**, back to a symbol's first
-  print — 1993 for SPY, 1980 for AAPL. Use **Custom…** on the chart for a
-  specific window such as 2002 to 2003: symbols refetch and strategies replay
-  from the code they were already compiled to, so changing the period costs no
-  model call and takes about a second.
-- **Returns rebase to what you are looking at.** Zoom to 1Y and every series
-  restarts at zero from the first visible bar, and the metrics table recomputes
-  over that same window. Measuring a zoomed view against a baseline scrolled
-  off the left edge is how comparison charts mislead people, so this one does
-  not do it.
-- **Trade markers** on the equity curve, with entry and exit arrows.
-- **Click any day** to open the full audit trail for that session: what was bought
-  and sold and *why*, every open position with its weight and unrealised P&L, the
-  strategy's own log lines, and — if the strategy consulted a model — the exact
-  prompt it sent and the answer it got back.
+  Break-even slippage                   3.3 bps
 
-  ![The day-detail panel showing a trade, its reason, and the resulting holdings](docs/images/screenshot-day.png)
+  the edge disappears below 5 bps of slippage — less than this tool
+  charges by default, and far less than a retail account pays. This is a
+  costs artefact, not a strategy
+```
 
-- **Drawdown subchart**, synchronised to the main time axis.
-- Range presets, log scale, crosshair with a live legend.
+<br>
 
-Built on TradingView's [Lightweight Charts](https://github.com/tradingview/lightweight-charts),
-vendored locally so the app has zero external runtime dependencies.
-
----
-
-## One backtest is not evidence
+### 2. `sweep` — the whole parameter space, not one point
 
 A single backtest tells you how one configuration did over one sample. It
-cannot tell you whether the idea works or whether that particular number
-happened to fit. So pyrite makes the second question first-class.
+cannot tell you whether the idea works or whether that number happened to fit.
 
-**Every number is a parameter.** The compiler declares them rather than
-hardcoding them — "the 50 day average" becomes a default of 50 and a grid
-around it:
-
-```js
-function setup(ctx) {
-  ctx.param("fast", 50,  { grid: [20, 35, 50, 65, 80] });
-  ctx.param("slow", 200, { grid: [100, 150, 200, 250] });
-}
-```
-
-**Search the space, not the point.**
-
-```
-pyrite sweep "buy SPY when the fast average crosses above the slow one"
+```bash
+pyrite sweep --example golden-cross --from 2015-01-05
 ```
 
 ```
+160 combinations in 955ms, ranked by sharpe
+
+                                  sharpe     return   drawdown     trades    win%
+  fast=50 slow=150 trail=0.12       0.89    128.85%    -15.99%          6  83.33%
+  fast=50 slow=150 trail=0.14       0.88    127.44%    -14.61%          6  83.33%
+  fast=80 slow=250 trail=0.12       0.87    115.32%    -16.96%          3 100.00%
+  ... and 157 more
+
 fast across, slow down, shaded by sharpe
 
-  200 │  *  *  =  =  =
-  150 │  #  =  :  -  -
-  100 │  #  @  .  :
-   50 │  .  #  #  +  :
+  250 │  +  +  %  *  %
+  200 │  #  %  #  +  #
+  150 │  =  +  @  +  *
+  100 │     :  .  -  +
       └───────────────
-         5 10 20 40 60
+        20 35 50 65 80
+
+       0.569 .   worst   :-=+*#%   best   0.888 @
+       A broad warm region is an edge. One bright cell in a dark
+       field is a fluke, however good its number looks.
 
 How much of this is real?
-  Best sharpe                             0.749
-  Median sharpe                           0.543
-  Expected best from luck alone           0.213
-  Neighbour support                      75.83%
-  Prob. of backtest overfitting          85.71%   (70 splits)
-  Deflated Sharpe                        94.22%
-
-  best sharpe 0.75 against 0.21 expected from luck alone over 20 trials; the
-  winner's neighbours average 76% of its score — some support, but the peak is
-  doing real work; probability of backtest overfitting is 86% — selecting on
-  this sample carries no information about the next one
+  Best sharpe                             0.888
+  Median sharpe                           0.652
+  Expected best from luck alone           0.426
+  Neighbour support                      82.51%
+  Prob. of backtest overfitting          81.43%   (70 splits)
+  Deflated Sharpe                        91.09%
 ```
+
+A heatmap is the fastest overfitting detector ever built — one bright cell in a
+dark field is a fluke, a broad warm region is an edge, and the eye reads that
+instantly. The statistics put numbers on it:
+
+- **Expected best from luck alone** — what the top of *N* trials scores with no
+  skill at all, given the spread the search actually produced. A best below
+  that line is not evidence of anything.
+- **Deflated Sharpe** — corrected for the number of trials, plus the skew and
+  fat tails of the winner's own returns.
+- **Probability of backtest overfitting** — across many train/test splits of
+  the same period, how often the in-sample winner lands below median out of
+  sample. 50% is a coin flip.
+- **Neighbour support** — how the cells beside the winner scored.
 
 ![The parameter surface, the robustness statistics and the verdict](docs/images/screenshot-search.png)
 
-A heatmap is the fastest overfitting detector ever built. One bright cell in a
-dark field is a fluke; a broad warm region is an edge. The statistics put
-numbers on what the eye already sees:
+<br>
 
-- **Expected best from luck alone** — what the top of *N* trials scores with no
-  skill at all. A best below it is not evidence of anything.
-- **Deflated Sharpe** — the Sharpe corrected for how many strategies you tried,
-  plus the skew and fat tails of the winner's own returns.
-- **Probability of backtest overfitting** — across many train/test splits of
-  the same period, how often the in-sample winner lands below median out of
-  sample. 50% is a coin flip, which is what pure overfitting looks like.
-- **Neighbour support** — how the cells beside the winner scored.
+### 3. `walkforward` — choose on one period, report on the next
 
-**Choose on one period, report on another.**
+The sweep above says the winner sits on a *broad plateau* — the shape of a real
+edge. Here is what happens when that plateau has to survive contact with data
+it was not chosen on.
 
-```
-pyrite walkforward "..." --train 504 --test 126
+```bash
+pyrite walkforward --example golden-cross --train 500 --test 150
 ```
 
-Parameters are picked on each training window and applied untouched to the
-window that follows, with an embargo between them so a 200-day indicator
-cannot leak across the boundary. The stitched curve is the only equity line in
-the tool that was never fitted to.
-
 ```
-  Mean in-sample return                  28.84%
-  Mean out-of-sample return               5.45%
-  Walk-forward efficiency                18.91%
-  Positive test windows                   15 / 20
+Stitched out-of-sample equity — the only curve here that was never fitted to
+  Total return                           -3.94%
+  Annualised (CAGR)                      -0.34%
+  Sharpe ratio                            -0.06
+  Max drawdown                          -10.65%
 
-  15 of 20 test windows finished positive; out-of-sample captured only 19% of
-  in-sample return, so most of the backtest was the search finding the sample
-  rather than an edge
+  Mean in-sample return                  21.86%
+  Mean out-of-sample return              -0.17%
+  Walk-forward efficiency                -0.78%
+  Positive test windows                    3 / 20
+  Parameter stability                    26.32%
+
+  3 of 20 test windows finished positive; out-of-sample returns are negative
+  against positive in-sample ones (efficiency -0.8%), which is the signature
+  of a fitted strategy; the winning configuration changed in 74% of
+  re-optimisations, so the strategy does not have a stable optimum
 ```
 
-Runs in parallel across your cores, sharing one copy of the price data — 400
-backtests in under half a second on a laptop.
+**+21.9% in sample, −0.2% out of it.** The plateau was real and it did not
+transfer. That gap is the single most useful number in this document, and no
+amount of staring at an equity curve produces it.
 
----
+Parameters are chosen on each training window and applied unchanged to the
+window that follows, with an embargo between them so a 200-day indicator cannot
+leak across the boundary.
 
-## "Make this better", without the usual trap
+<br>
 
-```
+### 4. `improve` — "make this better", without the usual trap
+
+```bash
 pyrite improve "a golden cross on SPY" --budget 8
 ```
 
 A model proposes a variant, the harness backtests it, the model reads the
-result and proposes again. Under a fixed budget, it converges on something
-better than it started with.
+result and proposes again. Under a fixed budget it converges on something
+better than it started with — and that loop is also an excellent way to build a
+strategy that fits one sample perfectly and has no edge whatever.
 
-That loop is also an excellent way to build a strategy that fits one sample
-perfectly and has no edge whatever — which is why the harness, not the model,
-owns the data:
+So the harness, not the model, owns the data:
 
-- The period is split. The model is shown results from the **training window
-  only**, and every candidate is run over that window alone.
-- The `Candidate` type it receives has no out-of-sample field. It cannot read
-  what the struct does not hold.
+- The period is split. The model sees results from the **training window
+  only**, and every candidate runs over that window alone.
+- The `Candidate` type it receives **has no out-of-sample field**. It cannot
+  read what the struct does not hold.
 - The holdout is touched **once**, at the end, after the search has closed, to
   score the winner that training data already chose.
 
@@ -350,378 +321,422 @@ The winner, on data the search never saw
   Surviving fraction                          41.88%
 ```
 
-The model is also handed the critique of each attempt, so it can act on a
-stated fault — "only 12 closed trades", "the returns are short volatility in
-disguise" — rather than guess at what to change. And it is told to stop when it
-has nothing worth trying, which is a legitimate answer and a better one than
-proposing noise.
+The model is handed the *critique* of each attempt rather than raw numbers, so
+it can act on a stated fault — "only 12 closed trades", "short volatility in
+disguise" — instead of guessing. It is told that chasing the last of the
+training performance is actively harmful, and that stopping early is a
+legitimate answer.
 
----
+<br>
 
-## Every result criticises itself
-
-A backtesting tool that oversells itself is worse than useless, so each run
-comes back with the paragraph a good quant would write about it:
-
-```
-How much should you believe this?  20/100
-
-  STOP too few trades to mean anything
-        12 closed round trips. A win rate or a Sharpe over this many trades is
-        noise: one different outcome moves every statistic here materially.
-
-  STOP this is short volatility in disguise
-        Returns are left-skewed (-1.33) with fat tails (excess kurtosis 11.5):
-        many small gains and occasional large losses. Sharpe flatters this
-        shape badly, because the risk it measures is not the risk being taken.
-
-  warn the return is concentrated in a few sessions
-        50% of the total gain disappears when excluding the 5 best days.
-```
-
-![The Trust tab, listing what is wrong with a result and why](docs/images/screenshot-trust.png)
-
-These findings are computed, not asked of a model. They cost nothing, work
-with no API key, and cannot invent a number. It detects lookahead fills,
-frictionless high-turnover runs, samples too small to mean anything, returns
-concentrated in a handful of sessions, short-volatility return shapes,
-survivorship in the symbol list, in-loop model calls, and exits that give back
-what the entries found.
-
-The full report also breaks the result down **by year, by market regime**
-(calm, normal, high volatility, bear), **by holding**, and by what is left
-when the best month or the best five days are removed.
-
----
-
-## How it works
-
-```
-  your sentence
-       │
-       ▼
-  ┌─────────────────┐   strategy API reference is fed to the model verbatim
-  │ compiler        │   → JSON: code, universe, benchmarks, warm-up,
-  │ (quality tier)  │           assumptions, limitations
-  └────────┬────────┘
-           │  compile-check, then a real smoke backtest
-           │  failures are fed back for repair, up to 3 attempts
-           ▼
-  ┌─────────────────┐   goja: pure-Go JS sandbox, no filesystem,
-  │ strategy (JS)   │   no network, no timers — only the ctx object
-  └────────┬────────┘
-           │  ctx.ai() / ctx.news() ─→ fast tier, cached per (day, prompt)
-           ▼
-  ┌─────────────────┐   daily event loop, orders fill at the NEXT open
-  │ backtest engine │   commissions, slippage, short borrow, corporate actions
-  └────────┬────────┘
-           ▼
-     equity curve · metrics · per-day audit trail
-```
-
-**Orders fill at the next session's open, not today's close.** This is the default
-and it matters: filling at a close the strategy has already observed is lookahead
-bias, and it silently inflates returns. You can switch to close fills for
-comparison, and the interface labels it as optimistic when you do.
-
-The generated code runs in [goja](https://github.com/dop251/goja), a pure-Go
-JavaScript interpreter. It ships with no filesystem, network, process or timer
-access. The only path to the outside world is `ctx.ai()`, `ctx.web()` and
-`ctx.news()` — all counted, capped, and recorded per day.
-
----
-
-## Choosing an AI provider
-
-pyrite speaks the OpenAI chat-completions protocol, so OpenAI, Cerebras and
-Moonshot (Kimi) all work through one client. There are two very different jobs, and
-they want different models:
-
-| Job | How often | Wants | Default |
-| --- | --- | --- | --- |
-| **Compiling** your sentence into code | Once per strategy | Correctness — being wrong costs far more than being slow | `openai / gpt-5.5` |
-| **In-strategy `ctx.ai()`** calls | Once per simulated day — hundreds or thousands of times | Speed and price | `cerebras / gpt-oss-120b` |
-
-That split is the whole recommendation. Compilation is a single call where quality
-dominates. In-strategy calls are a tight loop where a 3000 token/sec model at low
-cost is the only thing that makes an AI-driven backtest practical.
-
-Kimi sits in the middle and is an excellent, cheaper substitute for compilation —
-`kimi-k2.7-code-highspeed` is code-tuned and fast.
-
-Set whichever keys you have; the router uses what is available and degrades
-gracefully when a tier is missing.
+### And `report` — all of it, as one document
 
 ```bash
-export OPENAI_API_KEY=sk-...
-export CEREBRAS_API_KEY=csk-...
-export KIMI_API_KEY=sk-...          # or MOONSHOT_API_KEY
-
-# Override any routing decision
-export PYRITE_ROUTE_QUALITY=kimi
-export PYRITE_ROUTE_FAST=cerebras
-export PYRITE_CEREBRAS_MODEL=gpt-oss-120b
+pyrite report "a golden cross on SPY" --out report.md
 ```
 
-`pyrite doctor` lists exactly which models each of your keys can reach.
+Runs the backtest, the parameter search, the walk-forward, the cost scan and a
+block bootstrap, then writes one Markdown document: **verdict first**, then the
+results against the benchmark, the out-of-sample evidence, the robustness
+statistics, where the return came from, what survives friction, the
+distribution of outcomes the same process could have produced, the specific
+objections, the provenance, and the code.
 
-### AI calls are cached, which changes the economics
-
-Every `ctx.ai()` reply is cached on disk keyed by *(simulated day, prompt)*. A
-weekly AI strategy over four years makes ~200 model calls on its first run and
-**zero** on every run after. That is what makes it affordable to iterate on an
-AI-driven strategy, and it also makes those backtests exactly reproducible.
+Every number in it is computed. With a model key the document also opens with a
+written summary; without one it is still complete, because prose is the only
+part a model contributes.
 
 ---
 
-## Limitations, please read
+## What it measures
 
-A backtesting tool that oversells itself is worse than useless. Here is what
-pyrite genuinely cannot tell you.
+<details>
+<summary><strong>Performance and risk</strong> — around 45 statistics</summary>
 
-**Survivorship bias.** The built-in symbol lists contain companies that matter
-*today*. A 2015 backtest picking from "mega caps" is choosing from a list we now
-know went on to succeed. Real-time you would have been choosing from a different
-list containing names that later failed.
+<br>
 
-**Market cap data comes from filings, and is still imperfect.** Ranking by
-market cap needs shares outstanding *as of the historical date*. Yahoo's
-fundamentals endpoints return HTTP 401, but the SEC's XBRL company-facts API
-serves the full disclosure history per company, free and without a key. So the
-bundled table
-([`internal/market/assets/shares_outstanding.csv`](internal/market/assets/shares_outstanding.csv))
-is generated from real filings — 8,473 rows across 290 symbols, each citing the
-accession number it came from. Rebuild or extend it yourself:
+Total return, CAGR, volatility, Sharpe, Sortino, Calmar, maximum drawdown with
+its dates, longest drawdown, best and worst day, win rate.
 
-```bash
-pyrite ingest edgar --universe megacap \
-    --user-agent "Your Name you@example.com"
-```
+Omega, ulcer index, Martin ratio, VaR and CVaR at 95% and 99%, skew, excess
+kurtosis, tail ratio, gain-to-pain, Kelly fraction, R² of the log equity curve,
+up and down capture, alpha, beta, tracking error, information ratio.
 
-Rows are dated by when the filing was **published**, not by the date the count
-was measured: a share count on a 31 March cover page was not knowable until the
-10-Q appeared in May, and dating it the other way hands every historical
-backtest several weeks of free information.
+Rolling Sharpe, volatility and beta as series, because one Sharpe for ten years
+hides that it was 2.4 for three of them.
 
-What is still wrong: dates before a symbol's first filing extrapolate backwards
-from the earliest row; consecutive filings within 0.5% of each other are dropped
-to keep the table small; and multi-class filers such as META report against a
-share-class axis the SEC's API does not expose, so their counts come from a
-weighted period average and are flagged as approximate in the file.
+</details>
 
-**AI and web strategies have lookahead bias by construction.** `ctx.web()` and
-`ctx.news()` query the internet *as it is now*, not as it was on the simulated day.
-A 2019 backtest that reads the web is being handed 2026 information. `ctx.ai()` has
-a milder version of the same problem — the model knows what happened next. Treat
-these runs as demonstrations of a mechanism, never as evidence that an idea works.
+<details>
+<summary><strong>Trades</strong> — round trips, not fills</summary>
 
-**Not modelled:** taxes, prices and stops that trigger between bars,
-options and futures, dividends as cash (they are reinvested via adjusted closes),
-market impact for large orders, borrow availability for shorts, delistings and
-spin-offs.
+<br>
 
-**Survivorship bias is fixed for the S&P 500, and only for it.** The universe
-name `sp500` resolves per simulated day from recorded index membership, so a
-2022 backtest can pick Silicon Valley Bank and take the loss it really produced,
-and cannot pick Tesla before it joined in December 2020. The bundled table holds
-881 tenures across 502 current and 379 former constituents, rebuilt with
-`pyrite ingest index`.
+Fills are paired FIFO into entry-and-exit round trips, which is the only level
+at which "did this idea work" is a meaningful question.
 
-The other universes (`megacap`, `tech`, `dow`, …) are still today's companies,
-and the remaining half of the problem is prices: free vendors do not serve
-delisted securities, so a dropped name resolves to a data error rather than a
-position unless you supply its history through `PYRITE_CSV_DIR`. See
-[docs/limitations.md](docs/limitations.md).
+Each carries **maximum adverse and favourable excursion** — the worst and best
+the position ever looked while it was open, measured intrabar. These are the
+two numbers no equity curve can show you. A losing trade with a large MFE was
+right and then gave it back: the exit is the problem, not the entry. A winning
+trade with a large MAE was paid for surviving noise, and a tighter stop would
+have destroyed it.
 
-**Modelled:** commissions, slippage (5 bps by default, not zero), short borrow
-cost, splits and dividends, cash drag, next-open fills, and — with `--impact 1`
-— market impact under the square-root law, so a large order pays for the
-liquidity it demands.
+Plus expectancy, payoff ratio, holding-period distribution, consecutive
+win/loss runs, an edge ratio, and a give-back figure.
 
-The last one changes results more than anything else on this page. The same
-high-turnover strategy over the same period returns **-10% on $100,000 and
--72% on $1bn**, purely because the second one has to move the market to get
-filled. Without it, position size is free and every strategy looks infinitely
-scalable.
+</details>
 
-And the ordinary one: past performance says very little about future returns, an
-overfitted backtest says nothing at all, and it is easy to produce an overfitted
-backtest by trying prompts until one looks good.
+<details>
+<summary><strong>Attribution</strong> — where the return actually came from</summary>
+
+<br>
+
+By calendar year, by month, by month-of-year, by market regime (calm, normal,
+high volatility, bear — classified off the benchmark), and by holding.
+
+Two stress tests, because most backtests are one or two good stretches wearing
+a trench coat: what the result looks like with the best month removed, and with
+the best five days removed.
+
+</details>
+
+<details>
+<summary><strong>Portfolio construction</strong> — beyond equal weight</summary>
+
+<br>
+
+`ctx.optimize(symbols, { objective: "hrp" })` returns weights ready for
+`ctx.rebalance()`: minimum variance, maximum Sharpe, risk parity, hierarchical
+risk parity, inverse volatility, and equal weight as the baseline the rest have
+to beat.
+
+Ledoit–Wolf shrinkage is on by default and chosen from the data. A covariance
+matrix estimated from 252 days across 30 assets is mostly noise, and
+minimum-variance and maximum-Sharpe both invert it — amplifying exactly that
+noise into confident, wrong weights.
+
+Pure Go. No linear algebra dependency, because the single-binary property is
+worth more than the few hundred lines it saves.
+
+</details>
+
+<details>
+<summary><strong>Indicators</strong> — around 35 built in</summary>
+
+<br>
+
+Moving averages (SMA, EMA, WMA, HMA), RSI, MACD, Bollinger, ATR, Keltner,
+Donchian, ADX with its directional components, Stochastic, Williams %R, CCI,
+OBV, MFI, VWAP, CMF, SuperTrend, Aroon, PSAR, Ichimoku, TRIX, ROC, Choppiness,
+z-score, correlation, beta, a linear-regression fit, and market-cap ranking.
+
+Every indicator a model has to hand-roll is a fresh chance to seed an EMA from
+the wrong bar or smooth a Wilder average as a simple one — and the output is
+still a plausible number, so nothing catches it.
+
+</details>
+
+---
+
+## The data is the hard part
+
+Everything above is engineering. This is where a backtester is usually dishonest
+without meaning to be.
+
+**Survivorship bias is fixed for the S&P 500.** `--universe sp500` resolves per
+simulated day from recorded index membership — 881 tenures across 502 current
+and 379 former constituents. A 2022 backtest can pick Silicon Valley Bank and
+take the loss it really produced; it cannot pick Tesla before it joined in
+December 2020. Rebuild the table yourself with `pyrite ingest index`.
+
+**Market caps come from filings.** Ranking by market cap needs shares
+outstanding *as of the historical date*. The SEC's XBRL company-facts API
+serves the full disclosure history per company, free and keyless, so the
+bundled table is generated from real filings — 8,473 rows across 290 symbols,
+each citing its accession number. Rows are dated by when the filing was
+**published**, not when the count was measured: a share count on a 31 March
+cover page was not knowable until the 10-Q appeared in May.
+
+**News is point-in-time.** `ctx.news()` queries an article index with an
+explicit publication-date window ending at the simulated day, so a strategy
+standing on 4 March 2019 sees what had been published by 4 March 2019 and
+nothing after it. It never falls back to a live feed when the index is empty —
+silently substituting today's internet would reintroduce exactly the bias this
+removes, and do it invisibly.
+
+**Economic series carry their release lag.** `ctx.fred("T10Y2Y")` reads St.
+Louis Fed data as of the simulated day. US CPI for March is stamped 1 March and
+not published until mid-April, so reading it on the 3rd is trading on a number
+nobody had. Each series is queried at *today minus its publication delay*.
+
+**Bar sizes from one minute to one month.** Every annualised statistic scales
+with the bar size — a Sharpe computed on 1-minute bars and annualised as daily
+would be out by about twentyfold, flatteringly. A strategy can read a coarser
+timeframe from inside a finer run, so a daily trend filter with 5-minute
+entries is a few lines.
+
+**Providers fall through per symbol.** Free endpoints fail for individual
+names rather than globally, and dropping those names from a forty-symbol
+universe silently changes the backtest — so the next vendor is tried for
+exactly the symbols that failed. Point `PYRITE_CSV_DIR` at your own data to use
+a paid vendor, or to backtest delisted securities.
 
 ---
 
 ## The strategy API
 
-The model writes against a documented API — the same document you can read:
-
-```bash
-pyrite api          # or click "Strategy API" in the web interface
-```
-
-A strategy is two functions:
+A strategy is two functions. The model writes against the same document you
+can read (`pyrite api`).
 
 ```js
 function setup(ctx) {
-  ctx.universe("megacap");     // or ["AAPL", "MSFT", ...]
-  ctx.warmup(200);             // bars of history needed before trading
+  ctx.universe("sp500");                                  // point-in-time membership
+  ctx.param("fast", 50,  { grid: [20, 35, 50, 65, 80] }); // declared, so it can be searched
+  ctx.param("slow", 200, { grid: [100, 150, 200, 250] });
+  ctx.warmup(270);                                        // the largest value the grids reach
 }
 
 function onDay(ctx) {
-  const top = ctx.biggestCompany();
-  if (!top) return;
-  for (const sym of ctx.heldSymbols()) {
-    if (sym !== top) ctx.close(sym, "no longer the largest company");
+  const fast = ctx.sma("SPY", ctx.params.fast);
+  const slow = ctx.sma("SPY", ctx.params.slow);
+  if (fast === null || slow === null) return;             // indicators return null, always guard
+
+  if (fast > slow && !ctx.hasPosition("SPY")) {
+    ctx.buy("SPY", { pctCash: 1, trailingStop: 0.12 }, "50d crossed above 200d");
+  } else if (fast < slow && ctx.hasPosition("SPY")) {
+    ctx.close("SPY", "50d crossed below 200d");
   }
-  if (!ctx.hasPosition(top)) ctx.buy(top, 100, "largest company by market cap");
 }
 ```
 
-`ctx` gives you prices and history, ~35 indicators, market-cap ranking, portfolio
-state, order placement by shares / dollars / target weight, stop-loss, take-profit
-and trailing stops, economic series from the St. Louis Fed, portfolio construction (`ctx.optimize` — minimum variance,
-maximum Sharpe, risk parity, hierarchical risk parity, with Ledoit–Wolf
-shrinkage), declared parameters, calendar helpers, persistent state, and the AI
-and web hooks.
-Full reference: [`internal/strategy/assets/api.md`](internal/strategy/assets/api.md).
+**Every number is declared, not written inline.** A number written inline can
+only ever be tested at the value it was written at. Declaring it is what lets
+`sweep` search the space and `walkforward` choose on one period and report on
+another.
 
-You can edit the generated code in the **Code** tab and re-run it directly — the
-compiler is a starting point, not a cage.
+`ctx` gives you prices and history, the indicators, market-cap ranking,
+portfolio state, orders by shares / dollars / target weight, stop-loss,
+take-profit and trailing stops, portfolio construction, economic series,
+lifecycle hooks (`onFill`, `onStop`, `onWeek`, `onMonth`), multi-timeframe
+access, persistent state, and the model and news hooks.
+
+Generated code runs in [goja](https://github.com/dop251/goja), a pure-Go
+interpreter with **no filesystem, network, process or timer access**. The only
+capabilities a strategy has are the ones attached to `ctx`, and each is
+counted, capped and recorded.
+
+Full reference: [`internal/strategy/assets/api.md`](internal/strategy/assets/api.md).
 
 ---
 
-## Command line
+## Orders fill at the next open
+
+This is the default and it is the single most important decision in the engine.
+
+Filling at a close the strategy has already observed is lookahead bias, and it
+silently inflates returns. You can switch to close fills for comparison with
+published backtests that do it, and the interface labels that choice
+optimistic.
+
+**Modelled:** commissions, slippage (5 bps by default, not zero), short borrow,
+splits and dividends, cash drag, next-open fills, and — with `--impact 1` —
+market impact under the square-root law, so a large order pays for the
+liquidity it demands. That last one changes results more than anything else
+here: the same high-turnover strategy returns **−10% on $100,000 and −72% on
+$1bn**, purely because the second has to move the market to get filled.
+
+---
+
+## The web app
 
 ```bash
-pyrite serve [--addr host:port] [--offline] [--open] [--dev ./web]
-pyrite run "<strategy>" [--from 2015-01-01] [--to 2024-12-31]
-                               [--cash 100000] [--benchmark SPY,QQQ]
-                               [--universe tech] [--code] [--json]
-                               [--code-file strategy.js]
-
-pyrite sweep "<strategy>"        # search the parameter space
-                               [--param fast=10,20,50] [--objective sharpe]
-                               [--top 20] [--csv out.csv] [--max-combos 5000]
-pyrite walkforward "<strategy>"  # optimise in-sample, report out
-                               [--train 504] [--test 126] [--embargo 200]
-                               [--anchored]
-pyrite improve "<strategy>"      # guided search against a blind holdout
-                               [--budget 6] [--holdout 0.3] [--goal "..."]
-pyrite report "<strategy>"       # the full battery, as one document
-                               [--out report.md] [--no-sweep] [--no-walkforward]
-
-pyrite ingest edgar --universe megacap --user-agent "You you@example.com"
-pyrite doctor           # check data, providers, caches
-pyrite api              # print the strategy API reference
-pyrite cache clear [--ai]
+pyrite serve --open
 ```
 
-`--code-file` runs a strategy you already have, skipping the compiler. Every
-command accepts it, so you can iterate on generated code without paying for a
-model call each time.
+Everything on the chart is a **view** — a strategy, or any ticker, index or ETF
+— normalised to percentage return so a $100,000 portfolio and a $300 share
+price are honestly comparable. Returns rebase to what you are looking at: zoom
+to 1Y and every series restarts at zero from the first visible bar, because
+measuring a zoomed view against a baseline scrolled off the left edge is how
+comparison charts mislead people.
 
-## Configuration
+Click any day for the full audit trail of that session — what was bought and
+sold and *why*, every open position with its weight and unrealised P&L, the
+strategy's own log lines, and the exact prompt and reply if it consulted a
+model.
+
+The **Trust** tab lists what is wrong with each result. The **Search** tab runs
+the parameter space and draws the surface.
+
+![The Trust tab, listing what is wrong with a result and why](docs/images/screenshot-trust.png)
+
+Built on [Lightweight Charts](https://github.com/tradingview/lightweight-charts),
+vendored locally so the app has zero external runtime dependencies. Vanilla
+JavaScript, no build step.
+
+---
+
+## From Python
+
+```bash
+pip install pyrite
+```
+
+```python
+from pyrite import Client
+
+with Client.serve(offline=True) as nq:          # starts and stops a server
+    run = nq.backtest(code=strategy, universe=["SPY"], start="2015-01-01")
+
+    run.curve.plot()
+    print(run.trades[["symbol", "net_pnl", "mae_pct", "mfe_pct"]])
+    print(run.by_year)
+
+    for f in run.critique:
+        print(f"[{f['severity']}] {f['title']}")
+
+    sw = nq.sweep(code=strategy, universe=["SPY"])
+    print(sw.surface("fast", "slow"))           # a grid, ready for a heatmap
+    print(sw.robustness["pbo"])
+```
+
+A client, not a reimplementation — the Go binary does the work, so a notebook
+and the CLI can never disagree about what a backtest means. Standard library
+only; pandas is optional and upgrades tables to DataFrames when present. See
+[`python/`](python/).
+
+---
+
+## What it cannot tell you
+
+A backtesting tool that oversells itself is worse than useless, so here is the
+honest accounting. The full version is in
+[docs/limitations.md](docs/limitations.md).
+
+**Survivorship bias outside the S&P 500.** The other universes (`megacap`,
+`tech`, `dow`, …) list companies that matter *today*. And even with
+point-in-time membership, prices are the other half: free vendors do not serve
+delisted securities, so a dropped name resolves to a data error rather than the
+loss it produced, unless you supply its history.
+
+**Intraday history is short.** Free intraday data reaches back about a month
+for 1-minute bars and two months for 5- to 30-minute. That is far too short to
+conclude anything.
+
+**`ctx.web()` still has lookahead.** News is date-bounded; general web search is
+not. And a model reading point-in-time headlines was itself trained on text
+written afterwards, so it knows how the period ended — a milder bias, but a
+real one, and the run says so.
+
+**Not modelled:** taxes, prices and stops that trigger between bars, options,
+futures roll, market impact unless you enable it, borrow availability, tick
+data, the order book.
+
+And the ordinary one: past performance says very little about future returns,
+an overfitted backtest says nothing at all, and it is easy to produce one by
+trying prompts until something looks good. The statistics in this tool exist to
+put a number on how much of a result is that.
+
+---
+
+## Reference
+
+<details>
+<summary><strong>Command line</strong></summary>
+
+<br>
+
+```
+pyrite serve [flags]              start the web app (default)
+pyrite run "<strategy>"           one backtest, with its own critique
+pyrite run --example NAME         run a bundled strategy, no key needed
+pyrite examples                   list the bundled strategies
+pyrite report "<strategy>"        the full battery, as one document
+
+pyrite sweep "<strategy>"         every combination, plus a heatmap and
+                                  the overfitting statistics
+pyrite walkforward "<strategy>"   choose on one period, report on the next
+pyrite improve "<strategy>"       guided search against a blind holdout
+
+pyrite ingest edgar               point-in-time share counts, from SEC filings
+pyrite ingest index               point-in-time S&P 500 membership
+
+pyrite doctor                     what works right now, and how to fix the rest
+pyrite api                        print the strategy API reference
+pyrite cache clear [--ai]         clear cached market data and replies
+pyrite version
+```
+
+Common flags: `--from`, `--to`, `--cash`, `--benchmark`, `--universe`,
+`--interval`, `--impact`, `--code-file`, `--offline`, `--json`.
+
+Per command: `run --cost-scan` · `sweep --param fast=10,20,50 --objective
+sharpe --csv out.csv` · `walkforward --train 504 --test 126 --embargo 200
+--anchored` · `improve --budget 6 --holdout 0.3 --goal "..."` · `report --out
+report.md`.
+
+A key is needed only to compile plain language. Every search above runs on
+`--code-file` or `--example` with none.
+
+</details>
+
+<details>
+<summary><strong>Configuration</strong></summary>
+
+<br>
 
 Everything has a sensible default. Override with environment variables or
 `$PYRITE_DATA_DIR/config.json`.
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `OPENAI_API_KEY` / `CEREBRAS_API_KEY` / `KIMI_API_KEY` | — | Model access |
+| `OPENAI_API_KEY` / `CEREBRAS_API_KEY` / `KIMI_API_KEY` | — | Hosted model access |
 | `PYRITE_ADDR` | `127.0.0.1:8080` | Listen address |
-| `PYRITE_DATA_DIR` | `~/.pyrite` | Cache and saved runs |
-| `PYRITE_ROUTE_QUALITY` / `PYRITE_ROUTE_BALANCED` / `PYRITE_ROUTE_FAST` | `openai` / `kimi` / `cerebras` | Tier routing |
-| `PYRITE_<PROVIDER>_MODEL` | see above | Per-provider model override |
-| `PYRITE_MAX_AI_CALLS` | `2000` | Per-run budget for `ai()` + `web()` |
+| `PYRITE_DATA_DIR` | `~/.pyrite` | Caches and saved runs |
+| `PYRITE_DATA_PROVIDERS` | `yahoo,stooq` | Ordered fallback chain |
+| `PYRITE_CSV_DIR` | — | A directory of `SYMBOL.csv` files, tried first |
+| `PYRITE_NEWS_PROVIDER` | `gdelt` | `gdelt` (point-in-time), `live`, or `none` |
+| `PYRITE_ROUTE_QUALITY` / `_BALANCED` / `_FAST` | auto | Model tier routing |
+| `PYRITE_<PROVIDER>_MODEL` | per provider | Model override |
+| `PYRITE_MAX_AI_CALLS` | `2000` | Per-run budget for `ai()` and `web()` |
 | `PYRITE_OFFLINE` | `false` | Synthetic data, no network |
-| `PYRITE_SEARCH_PROVIDER` | `duckduckgo` | `duckduckgo` or `none` |
-| `PYRITE_DATA_PROVIDERS` | `yahoo,stooq` | ordered fallback chain for market data |
-| `PYRITE_CSV_DIR` | — | a directory of `SYMBOL.csv` files, tried before any vendor |
 
-Market data comes from Yahoo Finance's public chart endpoint (no key required),
-with Stooq behind it. Free endpoints fail in a particular way — they work for
-most symbols and quietly 401 on a few — so the chain retries **only the symbols
-that failed** with the next vendor, rather than dropping those names from the
-universe and silently changing the backtest.
+Ollama and LM Studio are detected automatically on their default ports.
 
-Point `PYRITE_CSV_DIR` at a directory of `SYMBOL.csv` files to use your own data.
-The parser accepts what vendors actually emit — mixed-case headers, `Adj Close`
-or `adjclose`, ISO or US or unix dates — and falls back to the raw close when
-there is no adjusted column. This is also the only way to backtest **delisted
-securities**, which no free live endpoint serves.
+</details>
 
-See [docs/data-sources.md](docs/data-sources.md) for more.
+<details>
+<summary><strong>Development</strong></summary>
 
----
-
-## The whole thing as a document
-
-```
-pyrite report "a golden cross on SPY" --out report.md
-```
-
-Runs the backtest, the parameter search, the walk-forward, the cost scan and a
-block bootstrap, then writes one Markdown document: verdict first, then the
-results against the benchmark, the out-of-sample evidence, the robustness
-statistics, where the return came from, what survives friction, the
-distribution of outcomes the same process could have produced, the specific
-objections, the provenance, and the code.
-
-Every number in it is computed. With a model key the document also opens with
-a written summary; without one it is still complete, because the prose is the
-only part a model contributes.
-
----
-
-## From Python
-
-```python
-from pyrite import Client
-
-with Client.serve(offline=True) as nq:
-    run = nq.backtest(code=strategy, universe=["SPY"], start="2015-01-01")
-    run.curve.plot()
-    print(run.trades[["symbol", "net_pnl", "mae_pct", "mfe_pct"]])
-    for f in run.critique:
-        print(f["severity"], f["title"])
-
-    sw = nq.sweep(code=strategy, universe=["SPY"])
-    print(sw.surface("fast", "slow"))
-```
-
-`pip install pyrite`. It is a client, not a reimplementation — the Go
-binary does the work, so the notebook and the CLI can never disagree about what
-a backtest means. pandas is optional: tables come back as DataFrames when it is
-installed and as lists of dicts when it is not. See [python/](python/).
-
----
-
-## Development
+<br>
 
 ```bash
-go test ./...                       # unit tests, no network or keys needed
-go build -o pyrite ./cmd/pyrite
-./pyrite serve --dev ./web   # live-edit the front end without rebuilding
+make check          # gofmt, vet and the full suite — no network, no API keys
+make smoke          # what a new user does in their first five minutes
+make test-python    # the Python client, against a real server
+make dev            # serve with live front-end editing
+make docker         # build the container image
 ```
 
 The front end is embedded with `go:embed`, so a normal build bakes in `web/`.
-Pass `--dev ./web` to serve it from disk while working on it.
+`--dev ./web` serves it from disk while you work on it.
 
-### The prompt corpus
-
-The project's real regression suite is a corpus of natural-language prompts that
-must compile *and* run. It costs API calls, so it is opt-in:
+The project's real regression suite for the compiler is a corpus of
+plain-English prompts that must compile *and* run. It costs API calls, so it is
+opt-in:
 
 ```bash
 PYRITE_LIVE_TESTS=1 go test ./internal/strategy/ -run TestPromptCorpus -v -timeout 60m
-PYRITE_CORPUS_FILTER=momentum PYRITE_LIVE_TESTS=1 go test ./internal/strategy/ -run TestPromptCorpus -v
 ```
 
-**If pyrite cannot handle a strategy you care about, the most useful thing
-you can do is add it to [`internal/strategy/testdata/corpus.json`](internal/strategy/testdata/corpus.json)
-and open an issue.** That corpus is how the API grows — two real bugs in order
-handling were found by it on its first run.
+**If pyrite cannot handle a strategy you care about, adding it to
+[`internal/strategy/testdata/corpus.json`](internal/strategy/testdata/corpus.json)
+is the most useful thing you can do.** That corpus is how the API grows.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md).
+
+</details>
 
 ---
 
@@ -729,6 +744,6 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 MIT. See [LICENSE](LICENSE) and [NOTICE](NOTICE) for third-party components.
 
-pyrite is a research and education tool. It is not investment advice, it is
-not a broker, and it will not place a real order. Nothing here is a recommendation
+pyrite is a research and education tool. It is not investment advice, it is not
+a broker, and it will not place a real order. Nothing here is a recommendation
 to buy or sell anything.

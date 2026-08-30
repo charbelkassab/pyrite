@@ -16,6 +16,7 @@ import (
 	"context"
 	"encoding/json"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"html"
 	"io"
@@ -50,6 +51,25 @@ type Searcher struct {
 	// hammer a free endpoint.
 	MinInterval time.Duration
 	lastCall    time.Time
+
+	// GDELT, when set, serves news queries with an explicit publication-date
+	// window ending at the simulated day. That is what makes ctx.news()
+	// point-in-time rather than a look at today's internet.
+	GDELT *GDELT
+	// PointInTimeNews records whether news actually came from a dated source
+	// during this run, so the result can say so instead of the docs having to
+	// disclaim something that may not apply.
+	PointInTimeNews bool
+}
+
+// NewsIsPointInTime reports whether news lookups are date-bounded.
+func (s *Searcher) NewsIsPointInTime() bool {
+	if s == nil {
+		return false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.GDELT != nil
 }
 
 // New builds a Searcher with an in-memory cache only.
@@ -85,7 +105,16 @@ func (s *Searcher) Search(ctx context.Context, day market.Day, query string, lim
 		limit = 5
 	}
 
-	key := fmt.Sprintf("%v|%d|%s", news, limit, strings.ToLower(strings.TrimSpace(query)))
+	// The simulated day belongs in the key whenever the backend is
+	// date-bounded. Without it, the first week's headlines would be served
+	// for every later week — which is both wrong and indistinguishable from
+	// the lookahead this backend exists to remove.
+	dayKey := ""
+	if news && s.GDELT != nil {
+		dayKey = string(day.Date())
+	}
+	key := fmt.Sprintf("%v|%d|%s|%s", news, limit, dayKey,
+		strings.ToLower(strings.TrimSpace(query)))
 	s.mu.Lock()
 	if hit, ok := s.cache[key]; ok {
 		s.mu.Unlock()
@@ -111,18 +140,37 @@ func (s *Searcher) Search(ctx context.Context, day market.Day, query string, lim
 		res []engine.SearchResult
 		err error
 	)
-	if news {
+	switch {
+	case news && s.GDELT != nil:
+		// No fallback to a live source. Silently substituting today's
+		// internet when the dated index has nothing would reintroduce the
+		// exact bias this path exists to remove, and it would do it
+		// invisibly — the strategy would see plausible headlines and never
+		// know they were from the future. An empty answer is the correct
+		// answer to "what was published that week" when nothing was indexed.
+		res, err = s.GDELT.News(ctx, day, query, limit)
+		if err != nil {
+			if errors.Is(err, errThrottledOrUncovered) {
+				res, err = nil, nil
+			}
+		}
+	case news:
 		res, err = s.yahooNews(ctx, query, limit)
 		if err != nil || len(res) == 0 {
 			// Fall back to a general search so a news query still returns
 			// something useful for non-ticker topics.
 			res, err = s.duckduckgo(ctx, query+" news", limit)
 		}
-	} else {
+	default:
 		res, err = s.duckduckgo(ctx, query, limit)
 	}
 	if err != nil {
 		return nil, err
+	}
+	if news && s.GDELT != nil && len(res) > 0 {
+		s.mu.Lock()
+		s.PointInTimeNews = true
+		s.mu.Unlock()
 	}
 
 	s.mu.Lock()

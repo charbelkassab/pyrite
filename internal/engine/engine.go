@@ -195,9 +195,11 @@ type Result struct {
 
 	Warnings []string `json:"warnings,omitempty"`
 	// StrategyErrors counts days where onDay threw.
-	StrategyErrors int   `json:"strategy_errors"`
-	AICallCount    int   `json:"ai_call_count"`
-	Elapsed        int64 `json:"elapsed_ms"`
+	StrategyErrors int `json:"strategy_errors"`
+	AICallCount    int `json:"ai_call_count"`
+	// NewsPointInTime records whether news lookups were date-bounded.
+	NewsPointInTime bool  `json:"news_point_in_time,omitempty"`
+	Elapsed         int64 `json:"elapsed_ms"`
 	// SkippedSymbols lists universe members that had no data.
 	SkippedSymbols map[string]string `json:"skipped_symbols,omitempty"`
 }
@@ -242,8 +244,12 @@ type Engine struct {
 	Search SearchFunc
 	// Econ supplies macro series to ctx.fred(). Nil disables it, which is
 	// what offline mode does.
-	Econ     EconProvider
-	Progress ProgressFunc
+	Econ EconProvider
+	// NewsIsPointInTime reports that ctx.news() reads a dated index rather
+	// than today's internet. It changes what the critique can honestly say
+	// about a run that consulted the news.
+	NewsIsPointInTime bool
+	Progress          ProgressFunc
 	// MaxAICalls caps ai()/web() calls for the whole run.
 	MaxAICalls int
 
@@ -514,6 +520,7 @@ func (e *Engine) Run(ctx context.Context) (*Result, error) {
 	res.Metrics = ComputeMetrics(res.Curve, e.scale())
 	res.Metrics.AddTradeStats(res.Fills, avgEquity(res.Curve))
 	res.AICallCount = e.aiCalls
+	res.NewsPointInTime = e.NewsIsPointInTime
 	res.Warnings = e.warnings
 
 	// Benchmarks share the strategy's calendar so the curves line up exactly.

@@ -75,6 +75,14 @@ type Config struct {
 	CacheOnly bool `json:"cache_only"`
 	// SearchProvider selects the web search backend: "duckduckgo" or "none".
 	SearchProvider string `json:"search_provider"`
+	// NewsProvider selects where ctx.news() reads from.
+	//
+	// "gdelt" queries an article index with an explicit publication-date
+	// window ending at the simulated day, which is what makes a news-reading
+	// backtest evidence rather than a demonstration. "live" uses today's
+	// headline feeds and has lookahead bias by construction. "none" disables
+	// news entirely.
+	NewsProvider string `json:"news_provider"`
 
 	// DataProviders is the ordered fallback chain for market data, e.g.
 	// "yahoo,stooq". A vendor that works for most symbols and quietly fails
@@ -145,6 +153,7 @@ func Defaults() *Config {
 		// finish in seconds, so the budget only needs to be generous once.
 		StrategyTimeoutSec: 3600,
 		SearchProvider:     "duckduckgo",
+		NewsProvider:       "gdelt",
 		DataProviders:      []string{"yahoo", "stooq"},
 	}
 }
@@ -229,6 +238,9 @@ func (c *Config) applyEnv() {
 	}
 	if v := os.Getenv("PYRITE_SEARCH_PROVIDER"); v != "" {
 		c.SearchProvider = v
+	}
+	if v := os.Getenv("PYRITE_NEWS_PROVIDER"); v != "" {
+		c.NewsProvider = strings.ToLower(strings.TrimSpace(v))
 	}
 	for tier, env := range map[Tier]string{
 		TierFast:     "PYRITE_ROUTE_FAST",
