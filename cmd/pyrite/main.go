@@ -181,9 +181,17 @@ func cmdServe(args []string) error {
 	fmt.Printf("  models     %s\n", a.DescribeRoutes())
 	fmt.Printf("  cache      %s\n", a.Cfg.DataDir)
 	if !a.Cfg.AnyProviderEnabled() {
-		fmt.Printf("\n  No model API key found, so strategies cannot be compiled from plain language.\n")
-		fmt.Printf("  Set OPENAI_API_KEY, CEREBRAS_API_KEY or KIMI_API_KEY and restart.\n")
-		fmt.Printf("  You can still run the bundled example strategies.\n")
+		fmt.Printf("\n  No model found, so plain-English strategies cannot be compiled yet.\n")
+		fmt.Printf("  Everything else works: paste code in the Code tab, or run a bundled\n")
+		fmt.Printf("  strategy with `pyrite run --example golden-cross`.\n\n")
+		fmt.Printf("  To turn compilation on:\n")
+		fmt.Printf("    free   — ollama pull qwen2.5-coder:7b, then restart\n")
+		fmt.Printf("    hosted — export OPENAI_API_KEY, CEREBRAS_API_KEY or KIMI_API_KEY\n")
+	} else if !a.Cfg.AnyCloudProviderEnabled() {
+		fmt.Printf("\n  Served by a local model. Free, and slower than a hosted one.\n")
+	}
+	if a.Cfg.OfflineMode {
+		fmt.Printf("\n  Offline: prices are deterministic synthetic data, not the market.\n")
 	}
 	fmt.Printf("\n  ready on http://%s\n\n", a.Cfg.Addr)
 
