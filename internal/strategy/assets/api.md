@@ -250,8 +250,46 @@ function onDay(ctx) {
 }
 ```
 
-`ctx.params` holds user-supplied tunables, so a strategy can be re-run with
-different numbers without recompiling.
+## Parameters
+
+Declare every number the strategy depends on. `ctx.param(name, default, opts)`
+registers a tunable in `setup()` and returns the value in force, which is the
+default unless a run overrides it.
+
+```js
+function setup(ctx) {
+  ctx.universe(["SPY"]);
+  ctx.param("fast", 50,  { grid: [20, 35, 50, 65, 80] });
+  ctx.param("slow", 200, { grid: [100, 150, 200, 250] });
+  ctx.param("stop", 0.12, { min: 0.05, max: 0.20, step: 0.05 });
+  ctx.warmup(280);          // the largest value the grids can reach
+}
+
+function onDay(ctx) {
+  const fast = ctx.sma("SPY", ctx.params.fast);
+  const slow = ctx.sma("SPY", ctx.params.slow);
+  if (fast === null || slow === null) return;
+  ...
+}
+```
+
+`opts` accepts `{grid: [...]}` for explicit values, `{min, max, step}` for a
+numeric range, and `{description}`. Omit all three and the parameter is fixed:
+still overridable by hand, but contributing no dimension to a search.
+
+The declared values are read back through `ctx.params.<name>`, so the two
+spellings always agree.
+
+**Why bother.** A number written inline can only ever be tested at the value it
+was written at. Declaring it is what lets `natural-quant sweep` search the
+space and `natural-quant walkforward` choose on one period and report on
+another — which is the difference between knowing an idea works and knowing
+that one number fitted one sample.
+
+Set `ctx.warmup()` from the largest value any lookback grid can reach. A grid
+running to 250 behind a warm-up of 200 silently produces no trades at its own
+upper end, and the sweep will report that as a bad parameter rather than as
+missing history.
 
 ---
 

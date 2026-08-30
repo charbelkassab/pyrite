@@ -388,9 +388,13 @@ type TradeStats struct {
 	// signal quality before the exit rule touches it.
 	EdgeRatio Ratio `json:"edge_ratio"`
 	// GiveBack is the average fraction of a losing trade's peak paper profit
-	// that was surrendered. A high value is the specific, actionable finding
-	// that the entries are fine and the exits are late.
+	// that was surrendered, over the losers that had a peak worth the name.
+	// Above 1 means the average loser was in profit and finished below its
+	// entry. It is the specific, actionable version of "the entries are fine
+	// and the exits are late".
 	GiveBack float64 `json:"give_back"`
+	// GiveBackTrades is how many losing trades the figure was measured over.
+	GiveBackTrades int `json:"give_back_trades"`
 	// WinnerMAEPct is the average worst excursion of trades that went on to
 	// win — in effect, how tight a stop would have to be before it started
 	// cutting the winners off.
@@ -454,11 +458,17 @@ func ComputeTradeStats(trades []Trade) TradeStats {
 			if t.NetPnL < s.LargestLoss {
 				s.LargestLoss = t.NetPnL
 			}
-			// A loser that had been up is a give-back. Measured against the
-			// peak, not the entry, because the question is how much of a
-			// profit that genuinely existed was handed back.
-			if t.MFEPct > 0 {
-				giveBackNum += (t.MFEPct - t.ReturnPct) / t.MFEPct
+			// A loser that had been up is a give-back, measured against the
+			// peak it reached rather than the entry.
+			//
+			// The 1% floor is not cosmetic. A trade that never rose more than
+			// a few basis points has no profit to have given back, and
+			// dividing its loss by that sliver produces figures in the
+			// hundreds of percent that say nothing about the exit rule.
+			// Clamping at 2 keeps a single catastrophic trade from setting
+			// the average on its own.
+			if t.MFEPct >= 0.01 {
+				giveBackNum += math.Min(2, (t.MFEPct-t.ReturnPct)/t.MFEPct)
 				giveBackN++
 			}
 		}
@@ -507,6 +517,7 @@ func ComputeTradeStats(trades []Trade) TradeStats {
 	}
 	if giveBackN > 0 {
 		s.GiveBack = giveBackNum / float64(giveBackN)
+		s.GiveBackTrades = giveBackN
 	}
 	if len(bars) > 0 {
 		sort.Ints(bars)

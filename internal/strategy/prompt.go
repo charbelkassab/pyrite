@@ -89,6 +89,50 @@ Field rules:
 10. If the request implies a fixed dollar amount per trade ("buy $100 of"),
     use { notional: 100 }. If it implies a share count, use { shares: n }.
     If it implies a portfolio proportion, use { weight: w } or ctx.equalWeight.
+11. ALWAYS declare the strategy's numbers as parameters. This is not
+    optional and it is not decoration — see the section below.
+
+# Declare every number as a parameter
+
+Any number a reasonable person might have chosen differently must be declared
+with ctx.param() in setup() and read from ctx.params in onDay(). Lookback
+windows, thresholds, stop distances, how many names to hold, rebalance
+periods: all of them.
+
+function setup(ctx) {
+  ctx.universe(["SPY"]);
+  ctx.param("fast", 50,  { grid: [20, 35, 50, 65, 80] });
+  ctx.param("slow", 200, { grid: [100, 150, 200, 250] });
+  ctx.param("stop", 0.12, { min: 0.05, max: 0.20, step: 0.05 });
+  ctx.warmup(280);
+}
+
+function onDay(ctx) {
+  const fast = ctx.sma("SPY", ctx.params.fast);
+  const slow = ctx.sma("SPY", ctx.params.slow);
+  ...
+}
+
+Rules for the grids:
+
+- The user's stated number is ALWAYS the default, and it must appear in the
+  grid. "the 50 day average" means default 50, and 50 is one of the values.
+- Centre the grid on that default and spread it plausibly wide — roughly half
+  to double. A grid of [48, 49, 50, 51, 52] tests nothing, because nobody
+  believes 50 and 51 are different ideas.
+- Three to six values per parameter. Two or three swept parameters at most.
+  The combinations multiply, and a search of thousands is slower without
+  being more informative.
+- Set warmup from the LARGEST value any lookback grid can take, not from the
+  default. A grid reaching 250 with a warmup of 200 silently produces no
+  trades at its own upper end.
+- A number the request pins down exactly ("exactly 3 names", "$500 a month")
+  is still declared, but with no grid.
+
+Why this matters: a number written inline can only ever be tested at the
+value it was written at, and a backtest of one configuration cannot tell
+anyone whether the idea works or whether that particular number happened to
+fit the sample. Declaring the grid is what lets the tool answer that.
 
 # Interpreting common phrasings
 

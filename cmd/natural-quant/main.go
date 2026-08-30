@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"sort"
 	"strings"
 	"syscall"
@@ -33,6 +34,10 @@ Usage:
   natural-quant doctor                   check data, model providers and caches
   natural-quant api                      print the strategy API reference
   natural-quant cache clear [--ai]       clear cached market data and replies
+  natural-quant sweep "<strategy>" [--param fast=10,20,50] [--objective sharpe]
+                                   [--csv out.csv] [--top 20]
+  natural-quant walkforward "<strategy>" [--train 504] [--test 126]
+                                         [--embargo 200] [--anchored]
   natural-quant ingest edgar [--symbols A,B] [--universe megacap] [--out FILE]
   natural-quant version
 
@@ -86,6 +91,10 @@ func run() error {
 		return cmdCache(args)
 	case "ingest":
 		return cmdIngest(args)
+	case "sweep":
+		return cmdSweep(args)
+	case "walkforward", "wf":
+		return cmdWalkForward(args)
 	case "version", "-v", "--version":
 		fmt.Printf("natural-quant %s\n", version)
 		return nil
@@ -167,6 +176,8 @@ func cmdRun(args []string) error {
 	asJSON := fs.Bool("json", false, "print the full result as JSON")
 	showCode := fs.Bool("code", false, "print the generated strategy code")
 	fillClose := fs.Bool("fill-close", false, "fill at the same day's close instead of the next open")
+	codeFile := fs.String("code-file", "", "run this JavaScript strategy instead of compiling a prompt")
+	warmupFlag := fs.Int("warmup", 0, "bars of history to load before the start date")
 	// Separate the prompt from the flags before parsing. Go's flag package
 	// stops at the first positional argument, so without this a command like
 	//   natural-quant run "buy SPY" --from 2020-01-01
@@ -177,16 +188,19 @@ func cmdRun(args []string) error {
 	}
 	// Anything still positional belongs to the prompt too.
 	prompt = strings.TrimSpace(strings.Join(append([]string{prompt}, fs.Args()...), " "))
-	if prompt == "" {
-		return fmt.Errorf("describe a strategy, for example:\n  natural-quant run \"buy SPY when the 50 day average crosses above the 200 day\"")
+	if prompt == "" && *codeFile == "" {
+		return fmt.Errorf("describe a strategy, for example:\n" +
+			"  natural-quant run \"buy SPY when the 50 day average crosses above the 200 day\"\n" +
+			"  or pass --code-file strategy.js to run code you already have")
 	}
 
 	a, err := newApp(fs, offline)
 	if err != nil {
 		return err
 	}
-	if !a.Cfg.AnyProviderEnabled() {
-		return fmt.Errorf("no model API key found. Set OPENAI_API_KEY, CEREBRAS_API_KEY or KIMI_API_KEY")
+	if *codeFile == "" && !a.Cfg.AnyProviderEnabled() {
+		return fmt.Errorf("no model API key found. Set OPENAI_API_KEY, CEREBRAS_API_KEY or KIMI_API_KEY,\n" +
+			"  or pass --code-file to run a strategy you already have")
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -218,19 +232,28 @@ func cmdRun(args []string) error {
 	}
 	opts.ApplyDefaults()
 
-	fmt.Fprintf(os.Stderr, "compiling strategy with %s...\n", a.DescribeRoutes())
-	started := time.Now()
-	plan, err := a.Compiler.Compile(ctx, strategy.Request{
-		Prompt:   prompt,
-		Universe: opts.Universe,
-		Start:    opts.Start,
-		End:      opts.End,
-	})
-	if err != nil {
-		return err
+	var plan *strategy.Plan
+	if *codeFile != "" {
+		code, err := os.ReadFile(*codeFile)
+		if err != nil {
+			return err
+		}
+		plan = &strategy.Plan{Name: filepath.Base(*codeFile), Code: string(code)}
+	} else {
+		fmt.Fprintf(os.Stderr, "compiling strategy with %s...\n", a.DescribeRoutes())
+		started := time.Now()
+		plan, err = a.Compiler.Compile(ctx, strategy.Request{
+			Prompt:   prompt,
+			Universe: opts.Universe,
+			Start:    opts.Start,
+			End:      opts.End,
+		})
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(os.Stderr, "compiled in %s using %s/%s (attempt %d)\n\n",
+			time.Since(started).Round(time.Millisecond), plan.Provider, plan.Model, plan.Attempts)
 	}
-	fmt.Fprintf(os.Stderr, "compiled in %s using %s/%s (attempt %d)\n\n",
-		time.Since(started).Round(time.Millisecond), plan.Provider, plan.Model, plan.Attempts)
 
 	if *showCode {
 		fmt.Println(plan.Code)
@@ -238,6 +261,9 @@ func cmdRun(args []string) error {
 	}
 
 	spec := app.BuildSpec(plan, prompt, opts)
+	if *warmupFlag > 0 {
+		spec.Warmup = *warmupFlag
+	}
 	lastPct := -1
 	opts.Progress = func(done, total int, day market.Day) {
 		pct := done * 100 / total
@@ -292,6 +318,7 @@ func printReport(plan *strategy.Plan, res *engine.Result) {
 	printRegimes(res)
 	printStress(res)
 	printSymbols(res)
+	printCritique(res)
 
 	if len(res.Benchmarks) > 0 {
 		fmt.Printf("\n  %-22s %14s %14s\n", "Comparison", "Total return", "Max drawdown")
@@ -514,8 +541,9 @@ func printRoundTrips(res *engine.Result) {
 		fmt.Printf("  %-22s %14s\n", "Avg worst excursion", pct(t.AvgMAEPct))
 		fmt.Printf("  %-22s %14s\n", "Avg best excursion", pct(t.AvgMFEPct))
 		fmt.Printf("  %-22s %14s\n", "Edge ratio", ratio(t.EdgeRatio))
-		if t.GiveBack > 0 {
-			fmt.Printf("  %-22s %14s\n", "Losers' give-back", pct(t.GiveBack))
+		if t.GiveBackTrades > 0 {
+			fmt.Printf("  %-22s %14s   (%d losers)\n", "Losers' give-back",
+				pct(t.GiveBack), t.GiveBackTrades)
 		}
 		if t.WinnerMAEPct < 0 {
 			fmt.Printf("  %-22s %14s\n", "Winners' worst dip", pct(t.WinnerMAEPct))
@@ -715,4 +743,24 @@ func cmdIngestEDGAR(args []string) error {
 			"or replace internal/market/assets/shares_outstanding.csv and rebuild.\n")
 	}
 	return nil
+}
+
+// printCritique reports what is wrong with the result just printed.
+func printCritique(res *engine.Result) {
+	c := res.Critique
+	if len(c.Findings) == 0 {
+		return
+	}
+	fmt.Printf("\nHow much should you believe this?  %d/100\n", c.TrustScore)
+	for _, f := range c.Findings {
+		marker := "note "
+		switch f.Severity {
+		case engine.SeverityCritical:
+			marker = "STOP "
+		case engine.SeverityWarning:
+			marker = "warn "
+		}
+		fmt.Printf("\n  %s%s\n", marker, f.Title)
+		fmt.Printf("        %s\n", wrapIndent(f.Detail, 68, "        "))
+	}
 }

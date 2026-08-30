@@ -186,6 +186,49 @@ func (v *strategyVM) installContext() error {
 
 	set := func(name string, fn any) { _ = obj.Set(name, fn) }
 
+	// ---- Declared parameters --------------------------------------------
+
+	// param(name, default, opts) declares a tunable and returns the value in
+	// force. Declaring one is what makes a strategy sweepable: a number
+	// written inline can only ever be tested at the value it was written at.
+	//
+	//   ctx.param("fast", 50, { grid: [10, 20, 50, 100] })
+	//   ctx.param("stop", 0.08, { min: 0.02, max: 0.20, step: 0.02 })
+	set("param", func(call goja.FunctionCall) goja.Value {
+		name := call.Argument(0).String()
+		if name == "" || goja.IsUndefined(call.Argument(0)) {
+			panic(rt.NewTypeError("ctx.param() needs a name"))
+		}
+		var def any
+		if len(call.Arguments) > 1 && !goja.IsUndefined(call.Argument(1)) {
+			def = call.Argument(1).Export()
+		}
+
+		var grid []any
+		var desc string
+		if len(call.Arguments) > 2 {
+			if m, ok := call.Argument(2).Export().(map[string]any); ok {
+				if raw, ok := m["grid"].([]any); ok {
+					grid = raw
+				}
+				if s, ok := m["description"].(string); ok {
+					desc = s
+				}
+				lo, hasLo := toFloatOK(firstKey(m, "min", "from"))
+				hi, hasHi := toFloatOK(firstKey(m, "max", "to"))
+				st, hasSt := toFloatOK(m["step"])
+				if len(grid) == 0 && hasLo && hasHi && hasSt {
+					grid = ExpandRange(lo, hi, st)
+				}
+			}
+		}
+
+		v := e.declareParam(name, def, grid, desc)
+		// Keep ctx.params in step so both spellings agree.
+		_ = paramsObj.Set(name, rt.ToValue(v))
+		return rt.ToValue(v)
+	})
+
 	// ---- Universe -------------------------------------------------------
 
 	// universe() reads the tradable symbol list; universe(list) sets it
@@ -1025,6 +1068,16 @@ func firstKey(m map[string]any, keys ...string) any {
 		}
 	}
 	return nil
+}
+
+// toFloatOK is toFloat plus whether the value was numeric at all, so that a
+// missing option and an explicit zero can be told apart.
+func toFloatOK(v any) (float64, bool) {
+	switch v.(type) {
+	case float64, float32, int64, int, int32:
+		return toFloat(v), true
+	}
+	return 0, false
 }
 
 func toFloat(v any) float64 {

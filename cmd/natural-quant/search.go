@@ -1,0 +1,566 @@
+package main
+
+import (
+	"context"
+	"encoding/csv"
+	"encoding/json"
+	"flag"
+	"fmt"
+	"math"
+	"os"
+	"os/signal"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"syscall"
+	"time"
+
+	"github.com/charbelkassab/natural-quant/internal/app"
+	"github.com/charbelkassab/natural-quant/internal/engine"
+	"github.com/charbelkassab/natural-quant/internal/market"
+	"github.com/charbelkassab/natural-quant/internal/strategy"
+)
+
+// searchSetup is the shared front half of `sweep` and `walkforward`: parse the
+// common flags, compile the prompt, and hand back a runnable base spec.
+type searchSetup struct {
+	app    *app.App
+	plan   *strategy.Plan
+	spec   engine.Spec
+	grids  map[string][]any
+	ctx    context.Context
+	cancel func()
+
+	objective string
+	workers   int
+	maxCombos int
+	asJSON    bool
+	csvPath   string
+}
+
+// addCommonSearchFlags registers the flags both search commands share.
+func addCommonSearchFlags(fs *flag.FlagSet) (params *paramFlags, objective, csvPath *string, workers, maxCombos *int, cash *float64, from, to, universe, benchmark *string, offline, asJSON *bool) {
+	params = &paramFlags{}
+	fs.Var(params, "param", "override a grid, e.g. --param fast=10,20,50 (repeatable)")
+	objective = fs.String("objective", "sharpe",
+		"metric to rank by: "+strings.Join(engine.ObjectiveNames(), ", "))
+	csvPath = fs.String("csv", "", "also write the full table to this file")
+	workers = fs.Int("workers", 0, "parallel backtests (default: one per CPU)")
+	maxCombos = fs.Int("max-combos", 5000, "refuse a search larger than this")
+	cash = fs.Float64("cash", 100000, "starting capital")
+	from = fs.String("from", "", "start date YYYY-MM-DD")
+	to = fs.String("to", "", "end date YYYY-MM-DD")
+	universe = fs.String("universe", "", "override the tradable symbols")
+	benchmark = fs.String("benchmark", "SPY", "comma separated comparison symbols")
+	offline = fs.Bool("offline", false, "use synthetic data and disable network access")
+	asJSON = fs.Bool("json", false, "print the full result as JSON")
+	return
+}
+
+// addCodeFileFlags registers the compiler bypass shared by both commands.
+func addCodeFileFlags(fs *flag.FlagSet) (codeFile *string, warmup *int) {
+	codeFile = fs.String("code-file", "",
+		"run this JavaScript strategy instead of compiling a prompt")
+	warmup = fs.Int("warmup", 0, "bars of history to load before the start date")
+	return
+}
+
+// paramFlags collects repeated --param name=v1,v2,v3 arguments.
+type paramFlags struct {
+	grids map[string][]any
+}
+
+func (p *paramFlags) String() string { return "" }
+
+func (p *paramFlags) Set(v string) error {
+	name, list, ok := strings.Cut(v, "=")
+	if !ok || strings.TrimSpace(name) == "" {
+		return fmt.Errorf("expected --param name=v1,v2,v3, got %q", v)
+	}
+	var vals []any
+	for _, raw := range strings.Split(list, ",") {
+		raw = strings.TrimSpace(raw)
+		if raw == "" {
+			continue
+		}
+		// Numbers stay numbers so grids compare and sort correctly; anything
+		// else is passed through as a string.
+		if f, err := strconv.ParseFloat(raw, 64); err == nil {
+			vals = append(vals, f)
+		} else {
+			vals = append(vals, raw)
+		}
+	}
+	if len(vals) == 0 {
+		return fmt.Errorf("--param %s has no values", name)
+	}
+	if p.grids == nil {
+		p.grids = map[string][]any{}
+	}
+	p.grids[strings.TrimSpace(name)] = vals
+	return nil
+}
+
+// cmdSweep searches a strategy's parameter space.
+func cmdSweep(args []string) error {
+	fs := flag.NewFlagSet("sweep", flag.ContinueOnError)
+	params, objective, csvPath, workers, maxCombos, cash, from, to, universe, benchmark, offline, asJSON :=
+		addCommonSearchFlags(fs)
+	codeFile, warmup := addCodeFileFlags(fs)
+	top := fs.Int("top", 15, "how many rows to print")
+	heatmap := fs.Bool("heatmap", true, "draw the parameter surface when two or more vary")
+
+	prompt, flagArgs := splitPromptAndFlags(args)
+	if err := fs.Parse(flagArgs); err != nil {
+		return err
+	}
+	prompt = strings.TrimSpace(strings.Join(append([]string{prompt}, fs.Args()...), " "))
+	if prompt == "" && *codeFile == "" {
+		return fmt.Errorf("describe a strategy, for example:\n" +
+			"  natural-quant sweep \"buy SPY when the fast average crosses the slow one\"\n" +
+			"  or pass --code-file strategy.js")
+	}
+
+	s, err := prepareSearch(fs, prompt, searchOpts{
+		offline: offline, cash: *cash, from: *from, to: *to,
+		universe: *universe, benchmark: *benchmark,
+		codeFile: *codeFile, warmup: *warmup,
+	})
+	if err != nil {
+		return err
+	}
+	defer s.cancel()
+
+	var lastPct int = -1
+	res, err := engine.RunSweep(s.ctx, engine.SweepSpec{
+		Base: s.spec, Grids: params.grids, Workers: *workers,
+		MaxCombos: *maxCombos, Objective: *objective, KeepBest: 1,
+	}, s.app.Store, func(done, total int, row engine.SweepRow) {
+		if pct := done * 100 / total; pct != lastPct {
+			lastPct = pct
+			fmt.Fprintf(os.Stderr, "\rsearching %3d%%  %d/%d", pct, done, total)
+		}
+	})
+	fmt.Fprintf(os.Stderr, "\r%50s\r", "")
+	if err != nil {
+		return err
+	}
+
+	if *csvPath != "" {
+		if err := writeSweepCSV(*csvPath, res); err != nil {
+			return err
+		}
+		fmt.Fprintf(os.Stderr, "wrote %s\n", *csvPath)
+	}
+	if *asJSON {
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		return enc.Encode(res)
+	}
+	printSweep(s.plan, res, *top, *heatmap)
+	return nil
+}
+
+// cmdWalkForward optimises on rolling windows and reports out of sample.
+func cmdWalkForward(args []string) error {
+	fs := flag.NewFlagSet("walkforward", flag.ContinueOnError)
+	params, objective, csvPath, workers, maxCombos, cash, from, to, universe, benchmark, offline, asJSON :=
+		addCommonSearchFlags(fs)
+	codeFile, warmup := addCodeFileFlags(fs)
+	train := fs.Int("train", 504, "training window in trading sessions")
+	test := fs.Int("test", 126, "test window in trading sessions")
+	embargo := fs.Int("embargo", -1, "sessions dropped between train and test (default: the strategy's warm-up)")
+	anchored := fs.Bool("anchored", false, "grow the training window from the start instead of rolling it")
+
+	prompt, flagArgs := splitPromptAndFlags(args)
+	if err := fs.Parse(flagArgs); err != nil {
+		return err
+	}
+	prompt = strings.TrimSpace(strings.Join(append([]string{prompt}, fs.Args()...), " "))
+	if prompt == "" && *codeFile == "" {
+		return fmt.Errorf("describe a strategy, for example:\n" +
+			"  natural-quant walkforward \"momentum rotation over the top 3 tech names\"\n" +
+			"  or pass --code-file strategy.js")
+	}
+
+	s, err := prepareSearch(fs, prompt, searchOpts{
+		offline: offline, cash: *cash, from: *from, to: *to,
+		universe: *universe, benchmark: *benchmark,
+		codeFile: *codeFile, warmup: *warmup,
+	})
+	if err != nil {
+		return err
+	}
+	defer s.cancel()
+
+	res, err := engine.RunWalkForward(s.ctx, engine.WalkForwardSpec{
+		Base: s.spec, Grids: params.grids, TrainDays: *train, TestDays: *test,
+		Embargo: *embargo, Anchored: *anchored, Objective: *objective,
+		Workers: *workers, MaxCombos: *maxCombos,
+	}, s.app.Store, func(fold, total int) {
+		fmt.Fprintf(os.Stderr, "\rfold %d/%d", fold, total)
+	})
+	fmt.Fprintf(os.Stderr, "\r%40s\r", "")
+	if err != nil {
+		return err
+	}
+
+	if *csvPath != "" {
+		if err := writeFoldsCSV(*csvPath, res); err != nil {
+			return err
+		}
+		fmt.Fprintf(os.Stderr, "wrote %s\n", *csvPath)
+	}
+	if *asJSON {
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		return enc.Encode(res)
+	}
+	printWalkForward(s.plan, res)
+	return nil
+}
+
+type searchOpts struct {
+	offline                       *bool
+	cash                          float64
+	from, to, universe, benchmark string
+	// codeFile bypasses the compiler and runs a strategy straight from disk.
+	// Besides being how these commands are tested without a model key, it is
+	// how you iterate on code you have already generated and hand-edited.
+	codeFile string
+	warmup   int
+}
+
+// prepareSearch compiles the prompt and builds the base spec both search
+// commands run variations of.
+func prepareSearch(fs *flag.FlagSet, prompt string, o searchOpts) (*searchSetup, error) {
+	a, err := newApp(fs, o.offline)
+	if err != nil {
+		return nil, err
+	}
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+
+	opts := app.RunOptions{InitialCash: o.cash}
+	if o.from != "" {
+		d, err := market.ParseDay(o.from)
+		if err != nil {
+			stop()
+			return nil, err
+		}
+		opts.Start = d
+	}
+	if o.to != "" {
+		d, err := market.ParseDay(o.to)
+		if err != nil {
+			stop()
+			return nil, err
+		}
+		opts.End = d
+	}
+	if o.benchmark != "" {
+		opts.Benchmarks = market.ResolveUniverse(o.benchmark)
+	}
+	if o.universe != "" {
+		opts.Universe = market.ResolveUniverse(o.universe)
+	}
+	opts.ApplyDefaults()
+
+	if o.codeFile != "" {
+		code, err := os.ReadFile(o.codeFile)
+		if err != nil {
+			stop()
+			return nil, err
+		}
+		plan := &strategy.Plan{
+			Name: filepath.Base(o.codeFile),
+			Code: string(code),
+		}
+		spec := app.BuildSpec(plan, "", opts)
+		if o.warmup > 0 {
+			spec.Warmup = o.warmup
+		}
+		return &searchSetup{app: a, plan: plan, spec: spec, ctx: ctx, cancel: stop}, nil
+	}
+
+	if !a.Cfg.AnyProviderEnabled() {
+		stop()
+		return nil, fmt.Errorf("no model API key found. Set OPENAI_API_KEY, CEREBRAS_API_KEY or KIMI_API_KEY,\n" +
+			"  or pass --code-file to run a strategy you already have")
+	}
+
+	fmt.Fprintf(os.Stderr, "compiling strategy with %s...\n", a.DescribeRoutes())
+	started := time.Now()
+	plan, err := a.Compiler.Compile(ctx, strategy.Request{
+		Prompt: prompt, Universe: opts.Universe, Start: opts.Start, End: opts.End,
+	})
+	if err != nil {
+		stop()
+		return nil, err
+	}
+	fmt.Fprintf(os.Stderr, "compiled in %s using %s/%s\n\n",
+		time.Since(started).Round(time.Millisecond), plan.Provider, plan.Model)
+
+	return &searchSetup{
+		app: a, plan: plan, spec: app.BuildSpec(plan, prompt, opts),
+		ctx: ctx, cancel: stop,
+	}, nil
+}
+
+// printSweep renders the search as a ranked table, a surface and a verdict.
+func printSweep(plan *strategy.Plan, res *engine.SweepResult, top int, heatmap bool) {
+	fmt.Printf("%s\n", plan.Name)
+	fmt.Printf("%d combinations in %s, ranked by %s\n\n",
+		res.Combos, time.Duration(res.Elapsed)*time.Millisecond, res.Objective)
+
+	rows := res.Sorted()
+	if top > len(rows) {
+		top = len(rows)
+	}
+	fmt.Printf("  %-28s %9s %10s %10s %10s %7s\n",
+		"", res.Objective, "return", "drawdown", "trades", "win%")
+	for _, r := range rows[:top] {
+		if r.Error != "" {
+			fmt.Printf("  %-28s %9s   %s\n", truncate(r.Label, 28), "—", truncate(r.Error, 40))
+			continue
+		}
+		fmt.Printf("  %-28s %9.3f %10s %10s %10d %7s\n",
+			truncate(r.Label, 28), r.Score, pct(r.TotalReturn),
+			pct(r.MaxDrawdown), r.Trades, pct(r.WinRate))
+	}
+	if len(rows) > top {
+		fmt.Printf("  ... and %d more\n", len(rows)-top)
+	}
+	if res.Failed > 0 {
+		fmt.Printf("\n  %d combinations failed\n", res.Failed)
+	}
+
+	if heatmap && len(res.Axes) >= 2 {
+		printHeatmap(res, res.Axes[0], res.Axes[1])
+	}
+	printRobustness(res.Robustness, res.Objective)
+}
+
+// printHeatmap draws the parameter surface in the terminal.
+//
+// A heatmap is the fastest overfitting detector there is: one bright cell in a
+// dark field is a fluke, a broad warm region is an edge, and the eye reads
+// that distinction instantly in a way no summary statistic conveys.
+func printHeatmap(res *engine.SweepResult, xAxis, yAxis string) {
+	xs, ys, z := res.Surface(xAxis, yAxis)
+	if len(xs) == 0 || len(ys) == 0 {
+		return
+	}
+
+	lo, hi := math.Inf(1), math.Inf(-1)
+	for _, row := range z {
+		for _, v := range row {
+			if math.IsNaN(v) {
+				continue
+			}
+			lo, hi = math.Min(lo, v), math.Max(hi, v)
+		}
+	}
+	if math.IsInf(lo, 0) || hi <= lo {
+		return
+	}
+
+	// A shading ramp rather than colour, so the output survives a pipe, a log
+	// file and a terminal with no colour support. Indexed as runes: several
+	// of these characters are multi-byte, and slicing the string by byte
+	// emits mojibake.
+	ramp := []rune(" .:-=+*#%@")
+
+	// Column width is set by the widest label on either axis, so the grid
+	// lines up whatever the parameter values happen to be.
+	labels := make([]string, len(xs))
+	cell := 2
+	for i, x := range xs {
+		labels[i] = formatAxisValue(x)
+		if n := len(labels[i]) + 1; n > cell {
+			cell = n
+		}
+	}
+	rowLabels := make([]string, len(ys))
+	gutter := 0
+	for i, y := range ys {
+		rowLabels[i] = formatAxisValue(y)
+		if n := len(rowLabels[i]); n > gutter {
+			gutter = n
+		}
+	}
+
+	fmt.Printf("\n%s across, %s down, shaded by %s\n\n", xAxis, yAxis, res.Objective)
+	for i := len(ys) - 1; i >= 0; i-- {
+		fmt.Printf("  %*s │", gutter, rowLabels[i])
+		for j := range xs {
+			v := z[i][j]
+			if math.IsNaN(v) {
+				fmt.Printf("%*s", cell, "?")
+				continue
+			}
+			idx := int((v - lo) / (hi - lo) * float64(len(ramp)-1))
+			if idx < 0 {
+				idx = 0
+			}
+			if idx >= len(ramp) {
+				idx = len(ramp) - 1
+			}
+			fmt.Printf("%*c", cell, ramp[idx])
+		}
+		fmt.Println()
+	}
+
+	fmt.Printf("  %*s └", gutter, "")
+	for range xs {
+		fmt.Print(strings.Repeat("─", cell))
+	}
+	fmt.Println()
+	fmt.Printf("  %*s  ", gutter, "")
+	for _, l := range labels {
+		fmt.Printf("%*s", cell, l)
+	}
+	fmt.Println()
+	fmt.Printf("\n  %*s  %.3f %c   worst   %s   best   %.3f %c\n", gutter, "",
+		lo, ramp[1], string(ramp[2:len(ramp)-1]), hi, ramp[len(ramp)-1])
+	fmt.Printf("  %*s  A broad warm region is an edge. One bright cell in a dark\n", gutter, "")
+	fmt.Printf("  %*s  field is a fluke, however good its number looks.\n", gutter, "")
+}
+
+// formatAxisValue renders a parameter value as a bare axis label.
+func formatAxisValue(v any) string {
+	// FormatParams writes "name=value"; with an empty name that is "=value".
+	return strings.TrimPrefix(engine.FormatParams(map[string]any{"": v}), "=")
+}
+
+// printRobustness reports the overfitting assessment.
+func printRobustness(r engine.Robustness, objective string) {
+	fmt.Printf("\nHow much of this is real?\n")
+	fmt.Printf("  %-30s %14.3f\n", "Best "+objective, r.BestScore)
+	fmt.Printf("  %-30s %14.3f\n", "Median "+objective, r.MedianScore)
+	if r.ExpectedMaxScore != 0 {
+		fmt.Printf("  %-30s %14.3f\n", "Expected best from luck alone", r.ExpectedMaxScore)
+	}
+	fmt.Printf("  %-30s %14s\n", "Combinations above zero", pct(r.PositiveShare))
+	if r.PlateauRatio.Defined() {
+		fmt.Printf("  %-30s %14s\n", "Neighbour support", pct(float64(r.PlateauRatio)))
+	}
+	if r.PBO.Defined() {
+		fmt.Printf("  %-30s %14s   (%d splits)\n", "Prob. of backtest overfitting",
+			pct(float64(r.PBO)), r.PBOSplits)
+	}
+	if r.DeflatedSharpe.Defined() {
+		fmt.Printf("  %-30s %14s\n", "Deflated Sharpe", pct(float64(r.DeflatedSharpe)))
+	}
+	if r.Verdict != "" {
+		fmt.Printf("\n  %s\n", wrapIndent(r.Verdict, 74, "  "))
+	}
+}
+
+// printWalkForward renders the fold-by-fold out-of-sample report.
+func printWalkForward(plan *strategy.Plan, res *engine.WalkForwardResult) {
+	fmt.Printf("%s\n", plan.Name)
+	fmt.Printf("%d folds, ranked by %s in training\n\n", len(res.Folds), res.Objective)
+
+	fmt.Printf("  %-4s %-11s %-11s %-24s %10s %10s\n",
+		"fold", "test from", "to", "chosen", "in-sample", "out")
+	for _, f := range res.Folds {
+		if f.Error != "" {
+			fmt.Printf("  %-4d %-11s %-11s %s\n", f.Index, f.TestStart, f.TestEnd, truncate(f.Error, 45))
+			continue
+		}
+		fmt.Printf("  %-4d %-11s %-11s %-24s %10s %10s\n",
+			f.Index, f.TestStart, f.TestEnd, truncate(engine.FormatParams(f.BestParams), 24),
+			pct(f.TrainMetrics.TotalReturn), pct(f.TestMetrics.TotalReturn))
+	}
+
+	m := res.StitchedMetrics
+	fmt.Printf("\nStitched out-of-sample equity — the only curve here that was never fitted to\n")
+	fmt.Printf("  %-30s %14s\n", "Total return", pct(m.TotalReturn))
+	fmt.Printf("  %-30s %14s\n", "Annualised (CAGR)", pct(m.CAGR))
+	fmt.Printf("  %-30s %14s\n", "Sharpe ratio", ratio(m.Sharpe))
+	fmt.Printf("  %-30s %14s\n", "Max drawdown", pct(m.MaxDrawdown))
+	fmt.Printf("  %-30s %14s\n", "Ulcer index", pct(res.StitchedRisk.UlcerIndex))
+
+	fmt.Printf("\n  %-30s %14s\n", "Mean in-sample return", pct(res.InSampleReturn))
+	fmt.Printf("  %-30s %14s\n", "Mean out-of-sample return", pct(res.OutOfSampleMean))
+	if res.Efficiency.Defined() {
+		fmt.Printf("  %-30s %14s\n", "Walk-forward efficiency", pct(float64(res.Efficiency)))
+	}
+	fmt.Printf("  %-30s %11d / %2d\n", "Positive test windows", res.ConsistentFolds, len(res.Folds))
+	fmt.Printf("  %-30s %14s\n", "Parameter stability", pct(res.ParamStability))
+
+	if res.Verdict != "" {
+		fmt.Printf("\n  %s\n", wrapIndent(res.Verdict, 74, "  "))
+	}
+}
+
+// writeSweepCSV exports the full table.
+func writeSweepCSV(path string, res *engine.SweepResult) error {
+	f, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	w := csv.NewWriter(f)
+	header := append(append([]string{}, res.Axes...),
+		"score", "total_return", "cagr", "sharpe", "sortino", "calmar",
+		"max_drawdown", "volatility", "trades", "win_rate", "turnover",
+		"ulcer_index", "expectancy", "error")
+	if err := w.Write(header); err != nil {
+		return err
+	}
+	for _, r := range res.Sorted() {
+		rec := make([]string, 0, len(header))
+		for _, ax := range res.Axes {
+			rec = append(rec, engine.FormatParams(map[string]any{"": r.Params[ax]})[1:])
+		}
+		rec = append(rec,
+			num(r.Score), num(r.TotalReturn), num(r.CAGR),
+			num(float64(r.Sharpe)), num(float64(r.Sortino)), num(float64(r.Calmar)),
+			num(r.MaxDrawdown), num(r.Volatility), strconv.Itoa(r.Trades),
+			num(r.WinRate), num(r.Turnover), num(r.UlcerIndex), num(r.Expectancy), r.Error)
+		if err := w.Write(rec); err != nil {
+			return err
+		}
+	}
+	w.Flush()
+	return w.Error()
+}
+
+// writeFoldsCSV exports the walk-forward folds.
+func writeFoldsCSV(path string, res *engine.WalkForwardResult) error {
+	f, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	w := csv.NewWriter(f)
+	if err := w.Write([]string{"fold", "train_start", "train_end", "test_start", "test_end",
+		"params", "train_return", "test_return", "train_score", "test_score", "error"}); err != nil {
+		return err
+	}
+	for _, fold := range res.Folds {
+		if err := w.Write([]string{
+			strconv.Itoa(fold.Index), string(fold.TrainStart), string(fold.TrainEnd),
+			string(fold.TestStart), string(fold.TestEnd),
+			engine.FormatParams(fold.BestParams),
+			num(fold.TrainMetrics.TotalReturn), num(fold.TestMetrics.TotalReturn),
+			num(fold.TrainScore), num(fold.TestScore), fold.Error,
+		}); err != nil {
+			return err
+		}
+	}
+	w.Flush()
+	return w.Error()
+}
+
+// num formats a float for CSV, leaving undefined values empty rather than
+// writing NaN, which most spreadsheets read as text.
+func num(v float64) string {
+	if math.IsNaN(v) || math.IsInf(v, 0) {
+		return ""
+	}
+	return strconv.FormatFloat(v, 'f', 6, 64)
+}

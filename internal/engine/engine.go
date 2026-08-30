@@ -163,6 +163,14 @@ type Result struct {
 	// Manifest records everything needed to judge whether a re-run is
 	// comparable to this one.
 	Manifest Manifest `json:"manifest"`
+	// Params are the tunables the strategy declared, and ParamValues the
+	// combination this run actually used. Together they are what a sweep
+	// needs in order to know what there is to search.
+	Params      []ParamDecl    `json:"params,omitempty"`
+	ParamValues map[string]any `json:"param_values,omitempty"`
+	// Critique is the deterministic assessment of this result: what is wrong
+	// with it, with the numbers that say so.
+	Critique Critique `json:"critique"`
 
 	Warnings []string `json:"warnings,omitempty"`
 	// StrategyErrors counts days where onDay threw.
@@ -227,6 +235,8 @@ type Engine struct {
 	dayLogs     []string
 	dayAI       []AICall
 	dayOrders   []Order
+	paramDecls  []ParamDecl
+	paramIdx    map[string]int
 	aiCalls     int
 	aiCacheHits int
 	aiModels    map[string]bool
@@ -433,8 +443,27 @@ func (e *Engine) Run(ctx context.Context) (*Result, error) {
 	// short enough to show a regime change while it is happening.
 	res.Rolling = RollingStats(res.Curve, benchCurve, 126, e.spec.RiskFreeRate)
 	res.Manifest = e.buildManifest(res)
+	res.Params = e.paramDecls
+	res.ParamValues = e.activeParams()
+	// The critique reads everything above it, so it is built last. It is
+	// attached to every run rather than hidden behind a flag: the project's
+	// stated position is that a backtesting tool which oversells itself is
+	// worse than useless, and this is that position made executable.
+	res.Critique = Criticise(res)
 	res.Elapsed = time.Since(started).Milliseconds()
 	return res, nil
+}
+
+// activeParams reports the value in force for every declared parameter.
+func (e *Engine) activeParams() map[string]any {
+	if len(e.paramDecls) == 0 {
+		return nil
+	}
+	out := make(map[string]any, len(e.paramDecls))
+	for _, d := range e.paramDecls {
+		out[d.Name] = e.paramValue(d.Name, d.Default)
+	}
+	return out
 }
 
 // recordAI files one model or search exchange against the current day and
