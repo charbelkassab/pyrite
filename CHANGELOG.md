@@ -102,6 +102,18 @@ the CLI flags may all move.
 
 ### Fixed
 
+- **The same backtest returned three different numbers.** `ctx.rebalance()`
+  and `ctx.equalWeight()` queued orders by ranging over a Go map, whose
+  iteration order is randomised. Invisible while there is cash for every
+  order and decisive when there is not, because the engine reduces whichever
+  orders arrive last: one example returned 17.16%, 16.21% and 16.35% on three
+  consecutive runs over identical data. Single-symbol strategies were never
+  affected. The `--param` path had the same bug in its grid merge.
+- A run that never placed an order scored 65/100 — above a real result with
+  two flaws — because the score subtracts a fixed penalty per finding and an
+  empty run trips fewer of them. "Never traded" now floors the score at zero.
+- A year that returned exactly zero was counted as a losing year, so a
+  strategy that never traded was told most of its years lost money.
 - The walk-forward verdict printed a bare ratio ("efficiency -0.01") beside a
   table reporting the same quantity as "-0.78%", which read as two different
   measurements.
