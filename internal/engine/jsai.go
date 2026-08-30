@@ -65,11 +65,11 @@ func (v *strategyVM) callAI(call goja.FunctionCall) goja.Value {
 	}
 	if err != nil {
 		rec.Error = err.Error()
-		e.dayAI = append(e.dayAI, rec)
+		e.recordAI(rec)
 		e.warnOnce("ai-error", "an AI call failed: "+truncateErr(err.Error()))
 		return goja.Null()
 	}
-	e.dayAI = append(e.dayAI, rec)
+	e.recordAI(rec)
 
 	if wantJSON {
 		var parsed any
@@ -132,7 +132,7 @@ func (v *strategyVM) callSearch(call goja.FunctionCall, news bool) goja.Value {
 	}
 	if err != nil {
 		rec.Error = err.Error()
-		e.dayAI = append(e.dayAI, rec)
+		e.recordAI(rec)
 		e.warnOnce("search-error", "a search call failed: "+truncateErr(err.Error()))
 		return rt.ToValue([]any{})
 	}
@@ -147,7 +147,7 @@ func (v *strategyVM) callSearch(call goja.FunctionCall, news bool) goja.Value {
 		fmt.Fprintf(&summary, "%d. %s — %s\n", i+1, r.Title, r.Snippet)
 	}
 	rec.Response = summary.String()
-	e.dayAI = append(e.dayAI, rec)
+	e.recordAI(rec)
 	return rt.ToValue(out)
 }
 

@@ -58,6 +58,14 @@ type Spec struct {
 
 	// Seed makes any stochastic strategy behaviour reproducible.
 	Seed int64 `json:"seed,omitempty"`
+
+	// OmitDayRecords drops the per-session audit trail from the result.
+	//
+	// A DayRecord holds every position, order, log line and model exchange
+	// for one session. That is the most valuable thing the tool produces for
+	// a single run, and the fastest way to exhaust memory across ten thousand
+	// of them. Sweeps set this; interactive runs do not.
+	OmitDayRecords bool `json:"omit_day_records,omitempty"`
 }
 
 // ApplyDefaults fills unset fields with sensible values.
@@ -140,6 +148,22 @@ type Result struct {
 	Metrics    Metrics           `json:"metrics"`
 	Benchmarks []BenchmarkResult `json:"benchmarks,omitempty"`
 
+	// Trades are fills paired into round trips; TradeStats aggregates them.
+	// This is the level at which "did the idea work" is answerable, which
+	// the fill list alone is not.
+	Trades     []Trade    `json:"trades,omitempty"`
+	TradeStats TradeStats `json:"trade_stats"`
+	// Risk holds the distribution and drawdown statistics behind the
+	// headline numbers.
+	Risk RiskMetrics `json:"risk"`
+	// Attribution decomposes the result by period, regime and holding.
+	Attribution Attribution `json:"attribution"`
+	// Rolling is a trailing-window view of Sharpe, volatility and beta.
+	Rolling []RollingPoint `json:"rolling,omitempty"`
+	// Manifest records everything needed to judge whether a re-run is
+	// comparable to this one.
+	Manifest Manifest `json:"manifest"`
+
 	Warnings []string `json:"warnings,omitempty"`
 	// StrategyErrors counts days where onDay threw.
 	StrategyErrors int   `json:"strategy_errors"`
@@ -204,6 +228,8 @@ type Engine struct {
 	dayAI       []AICall
 	dayOrders   []Order
 	aiCalls     int
+	aiCacheHits int
+	aiModels    map[string]bool
 	warnings    []string
 	warnSeen    map[string]bool
 	monthSeen   map[string]bool
@@ -339,16 +365,18 @@ func (e *Engine) Run(ctx context.Context) (*Result, error) {
 				Date: day, Value: equity, Cash: e.portfolio.Cash,
 				Return: ret, Drawdown: dd, Exposure: exposure,
 			})
-			res.Days = append(res.Days, DayRecord{
-				Date: day, Equity: equity, Cash: e.portfolio.Cash,
-				Exposure: exposure, Return: ret, Drawdown: dd,
-				Positions: e.snapshotPositions(day, equity),
-				Fills:     fills,
-				Orders:    e.dayOrders,
-				Logs:      e.dayLogs,
-				AICalls:   e.dayAI,
-				Error:     dayErr,
-			})
+			if !e.spec.OmitDayRecords {
+				res.Days = append(res.Days, DayRecord{
+					Date: day, Equity: equity, Cash: e.portfolio.Cash,
+					Exposure: exposure, Return: ret, Drawdown: dd,
+					Positions: e.snapshotPositions(day, equity),
+					Fills:     fills,
+					Orders:    e.dayOrders,
+					Logs:      e.dayLogs,
+					AICalls:   e.dayAI,
+					Error:     dayErr,
+				})
+			}
 			res.Fills = append(res.Fills, fills...)
 		}
 
@@ -361,9 +389,10 @@ func (e *Engine) Run(ctx context.Context) (*Result, error) {
 	res.Metrics.AddTradeStats(res.Fills, avgEquity(res.Curve))
 	res.AICallCount = e.aiCalls
 	res.Warnings = e.warnings
-	res.Elapsed = time.Since(started).Milliseconds()
 
 	// Benchmarks share the strategy's calendar so the curves line up exactly.
+	// They are built before the risk and attribution sections because both
+	// want a reference curve to measure against.
 	curveDays := make([]market.Day, 0, len(res.Curve))
 	for _, p := range res.Curve {
 		curveDays = append(curveDays, p.Date)
@@ -387,10 +416,44 @@ func (e *Engine) Run(ctx context.Context) (*Result, error) {
 			Symbol: sym, Label: label, Curve: curve, Metric: bm,
 		})
 	}
+	var benchCurve []EquityPoint
 	if len(res.Benchmarks) > 0 {
-		res.Metrics.AddBenchmarkStats(res.Curve, res.Benchmarks[0].Curve, e.spec.RiskFreeRate)
+		benchCurve = res.Benchmarks[0].Curve
+		res.Metrics.AddBenchmarkStats(res.Curve, benchCurve, e.spec.RiskFreeRate)
 	}
+
+	res.Trades = BuildTrades(res.Fills, e.series)
+	res.TradeStats = ComputeTradeStats(res.Trades)
+	res.Risk = ComputeRiskMetrics(res.Curve, res.Metrics.CAGR, e.spec.RiskFreeRate)
+	if benchCurve != nil {
+		res.Risk.AddCapture(res.Curve, benchCurve)
+	}
+	res.Attribution = ComputeAttribution(res.Curve, res.Trades, benchCurve, e.spec.RiskFreeRate)
+	// Half a trading year: long enough for the statistic to mean something,
+	// short enough to show a regime change while it is happening.
+	res.Rolling = RollingStats(res.Curve, benchCurve, 126, e.spec.RiskFreeRate)
+	res.Manifest = e.buildManifest(res)
+	res.Elapsed = time.Since(started).Milliseconds()
 	return res, nil
+}
+
+// recordAI files one model or search exchange against the current day and
+// keeps the running totals the manifest needs.
+//
+// The totals are tracked here rather than derived from the day records
+// afterwards, because a sweep discards those records and the provenance must
+// survive anyway.
+func (e *Engine) recordAI(rec AICall) {
+	e.dayAI = append(e.dayAI, rec)
+	if rec.Cached {
+		e.aiCacheHits++
+	}
+	if rec.Model != "" {
+		if e.aiModels == nil {
+			e.aiModels = map[string]bool{}
+		}
+		e.aiModels[rec.Provider+"/"+rec.Model] = true
+	}
 }
 
 // loadData fetches every symbol the run needs and builds the trading calendar.

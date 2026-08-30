@@ -2,12 +2,14 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
 	"os/signal"
+	"sort"
 	"strings"
 	"syscall"
 	"time"
@@ -31,6 +33,7 @@ Usage:
   natural-quant doctor                   check data, model providers and caches
   natural-quant api                      print the strategy API reference
   natural-quant cache clear [--ai]       clear cached market data and replies
+  natural-quant ingest edgar [--symbols A,B] [--universe megacap] [--out FILE]
   natural-quant version
 
 Common flags:
@@ -53,6 +56,9 @@ Examples:
 `
 
 func main() {
+	// The engine stamps every result with the build identity, so a saved run
+	// records which binary produced it.
+	engine.Version = version
 	if err := run(); err != nil {
 		fmt.Fprintf(os.Stderr, "\nerror: %v\n", err)
 		os.Exit(1)
@@ -78,6 +84,8 @@ func run() error {
 		return nil
 	case "cache":
 		return cmdCache(args)
+	case "ingest":
+		return cmdIngest(args)
 	case "version", "-v", "--version":
 		fmt.Printf("natural-quant %s\n", version)
 		return nil
@@ -278,6 +286,13 @@ func printReport(plan *strategy.Plan, res *engine.Result) {
 	}
 	fmt.Printf("  %-22s %14s\n", "Costs paid", money(m.TotalCosts))
 
+	printRoundTrips(res)
+	printRisk(res)
+	printByYear(res)
+	printRegimes(res)
+	printStress(res)
+	printSymbols(res)
+
 	if len(res.Benchmarks) > 0 {
 		fmt.Printf("\n  %-22s %14s %14s\n", "Comparison", "Total return", "Max drawdown")
 		fmt.Printf("  %-22s %14s %14s\n", plan.Name, pct(m.TotalReturn), pct(m.MaxDrawdown))
@@ -471,4 +486,233 @@ func wrapIndent(s string, width int, indent string) string {
 	}
 	lines = append(lines, line)
 	return strings.Join(lines, "\n"+indent)
+}
+
+// printRoundTrips reports the entry-to-exit view of the run.
+func printRoundTrips(res *engine.Result) {
+	t := res.TradeStats
+	if t.Closed == 0 {
+		return
+	}
+	fmt.Printf("\nRound trips\n")
+	fmt.Printf("  %-22s %14d", "Closed", t.Closed)
+	if t.Open > 0 {
+		fmt.Printf("   (%d still open)", t.Open)
+	}
+	fmt.Println()
+	fmt.Printf("  %-22s %14s\n", "Win rate", pct(t.WinRate))
+	fmt.Printf("  %-22s %14s\n", "Average win", pct(t.AvgWinPct))
+	fmt.Printf("  %-22s %14s\n", "Average loss", pct(t.AvgLossPct))
+	fmt.Printf("  %-22s %14s\n", "Payoff ratio", ratio(t.PayoffRatio))
+	fmt.Printf("  %-22s %14s\n", "Expectancy / trade", money(t.Expectancy))
+	fmt.Printf("  %-22s %14.1f\n", "Average bars held", t.AvgBarsHeld)
+	fmt.Printf("  %-22s %11d / %2d\n", "Longest win/loss run", t.MaxConsecWins, t.MaxConsecLosses)
+
+	// Excursion analysis only means something when price history was
+	// available to measure it against.
+	if t.AvgMFEPct != 0 || t.AvgMAEPct != 0 {
+		fmt.Printf("  %-22s %14s\n", "Avg worst excursion", pct(t.AvgMAEPct))
+		fmt.Printf("  %-22s %14s\n", "Avg best excursion", pct(t.AvgMFEPct))
+		fmt.Printf("  %-22s %14s\n", "Edge ratio", ratio(t.EdgeRatio))
+		if t.GiveBack > 0 {
+			fmt.Printf("  %-22s %14s\n", "Losers' give-back", pct(t.GiveBack))
+		}
+		if t.WinnerMAEPct < 0 {
+			fmt.Printf("  %-22s %14s\n", "Winners' worst dip", pct(t.WinnerMAEPct))
+		}
+	}
+}
+
+// printRisk reports the distribution and drawdown statistics.
+func printRisk(res *engine.Result) {
+	r := res.Risk
+	fmt.Printf("\nRisk\n")
+	fmt.Printf("  %-22s %14s\n", "Ulcer index", pct(r.UlcerIndex))
+	fmt.Printf("  %-22s %14s\n", "Daily VaR (95%)", pct(r.VaR95))
+	fmt.Printf("  %-22s %14s\n", "Daily CVaR (95%)", pct(r.CVaR95))
+	fmt.Printf("  %-22s %14.2f\n", "Return skew", r.Skew)
+	fmt.Printf("  %-22s %14.2f\n", "Excess kurtosis", r.ExcessKurtosis)
+	fmt.Printf("  %-22s %14s\n", "Tail ratio", ratio(r.TailRatio))
+	fmt.Printf("  %-22s %14s\n", "Omega", ratio(r.Omega))
+	fmt.Printf("  %-22s %14s\n", "Gain to pain", ratio(r.GainToPain))
+	fmt.Printf("  %-22s %14.2f\n", "Equity curve R²", r.EquityR2)
+	if r.UpCapture.Defined() && r.DownCapture.Defined() {
+		fmt.Printf("  %-22s %8s / %5s\n", "Up / down capture", ratio(r.UpCapture), ratio(r.DownCapture))
+	}
+}
+
+// printByYear shows the calendar breakdown, which is where a strategy that
+// worked twice usually gives itself away.
+func printByYear(res *engine.Result) {
+	years := res.Attribution.ByYear
+	if len(years) < 2 {
+		return
+	}
+	hasBench := false
+	for _, y := range years {
+		if y.BenchmarkReturn != 0 {
+			hasBench = true
+			break
+		}
+	}
+	fmt.Printf("\nBy year\n")
+	if hasBench {
+		fmt.Printf("  %-8s %12s %12s %12s %12s\n", "", "Return", "Benchmark", "Excess", "Drawdown")
+	} else {
+		fmt.Printf("  %-8s %12s %12s\n", "", "Return", "Drawdown")
+	}
+	for _, y := range years {
+		if hasBench {
+			fmt.Printf("  %-8s %12s %12s %12s %12s\n", y.Label,
+				pct(y.Return), pct(y.BenchmarkReturn), pct(y.Excess), pct(y.MaxDrawdown))
+		} else {
+			fmt.Printf("  %-8s %12s %12s\n", y.Label, pct(y.Return), pct(y.MaxDrawdown))
+		}
+	}
+}
+
+// printRegimes shows behaviour by market condition rather than by calendar.
+func printRegimes(res *engine.Result) {
+	rs := res.Attribution.ByRegime
+	if len(rs) == 0 {
+		return
+	}
+	fmt.Printf("\nBy market regime\n")
+	fmt.Printf("  %-22s %12s %12s %8s\n", "", "Return", "Drawdown", "Days")
+	for _, r := range rs {
+		fmt.Printf("  %-22s %12s %12s %8d\n", r.Label, pct(r.Return), pct(r.MaxDrawdown), r.TradingDays)
+	}
+}
+
+// printStress shows what is left once the best episodes are removed.
+func printStress(res *engine.Result) {
+	ss := res.Attribution.Stress
+	if len(ss) == 0 {
+		return
+	}
+	fmt.Printf("\nHow concentrated is the edge?\n")
+	for _, s := range ss {
+		fmt.Printf("  %-30s %12s   (%s of the gain)\n",
+			s.Label, pct(s.Return), pct(s.ShareOfTotal))
+	}
+}
+
+// printSymbols ranks holdings by what they actually contributed.
+func printSymbols(res *engine.Result) {
+	syms := res.Attribution.BySymbol
+	if len(syms) < 2 {
+		return
+	}
+	fmt.Printf("\nWhere the money came from\n")
+	fmt.Printf("  %-10s %14s %10s %8s %8s\n", "", "Net P&L", "Share", "Trades", "Win %")
+	n := len(syms)
+	if n > 10 {
+		n = 10
+	}
+	for _, s := range syms[:n] {
+		fmt.Printf("  %-10s %14s %10s %8d %8s\n", s.Symbol,
+			money(s.NetPnL), pct(s.Contribution), s.Trades, pct(s.WinRate))
+	}
+	if len(syms) > n {
+		fmt.Printf("  ... and %d more\n", len(syms)-n)
+	}
+}
+
+// cmdIngest builds reference data tables from public sources.
+func cmdIngest(args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("usage: natural-quant ingest edgar [flags]")
+	}
+	switch args[0] {
+	case "edgar":
+		return cmdIngestEDGAR(args[1:])
+	default:
+		return fmt.Errorf("unknown ingest source %q (only \"edgar\" is available)", args[0])
+	}
+}
+
+// cmdIngestEDGAR rebuilds the point-in-time share-count table from SEC filings.
+func cmdIngestEDGAR(args []string) error {
+	fs := flag.NewFlagSet("ingest edgar", flag.ContinueOnError)
+	symbols := fs.String("symbols", "", "comma-separated tickers to ingest")
+	universe := fs.String("universe", "", "a named universe to ingest (megacap, tech, dow, ...)")
+	out := fs.String("out", "", "write here instead of stdout")
+	agent := fs.String("user-agent", os.Getenv("NQ_SEC_USER_AGENT"),
+		"identify yourself to the SEC, e.g. \"Jane Doe jane@example.com\" (or set NQ_SEC_USER_AGENT)")
+	threshold := fs.Float64("threshold", 0.005,
+		"drop a filing whose share count moved less than this fraction from the last kept row")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	var syms []string
+	if *symbols != "" {
+		for _, s := range strings.Split(*symbols, ",") {
+			if s = strings.TrimSpace(s); s != "" {
+				syms = append(syms, s)
+			}
+		}
+	}
+	if *universe != "" {
+		syms = append(syms, market.ResolveUniverse(*universe)...)
+	}
+	if len(syms) == 0 {
+		return fmt.Errorf("nothing to ingest: pass --symbols or --universe")
+	}
+	if strings.TrimSpace(*agent) == "" {
+		return fmt.Errorf("the SEC requires a User-Agent identifying you.\n" +
+			"  Pass --user-agent \"Your Name you@example.com\" or set NQ_SEC_USER_AGENT.\n" +
+			"  Requests without one are refused, and a generic string risks a block.")
+	}
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	var buf bytes.Buffer
+	e := market.NewEDGAR(*agent)
+	rep, err := e.BuildSharesTable(ctx, syms, *threshold, &buf, func(sym string, i, n int) {
+		fmt.Fprintf(os.Stderr, "\r  %-8s %d/%d", sym, i+1, n)
+	})
+	fmt.Fprintf(os.Stderr, "\r%40s\r", "")
+	if err != nil {
+		return err
+	}
+
+	if *out == "" {
+		fmt.Print(buf.String())
+	} else {
+		if err := os.WriteFile(*out, buf.Bytes(), 0o644); err != nil {
+			return err
+		}
+		fmt.Printf("wrote %s\n", *out)
+	}
+
+	fmt.Fprintf(os.Stderr, "\n%d rows for %d symbols\n", rep.Rows, len(rep.Symbols))
+	if len(rep.Approximate) > 0 {
+		fmt.Fprintf(os.Stderr, "\nApproximate (no point-in-time count is published in a machine-readable form):\n")
+		approx := make([]string, 0, len(rep.Approximate))
+		for sym := range rep.Approximate {
+			approx = append(approx, sym)
+		}
+		sort.Strings(approx)
+		for _, sym := range approx {
+			fmt.Fprintf(os.Stderr, "  %-8s %s\n", sym, rep.Approximate[sym])
+		}
+	}
+	if len(rep.Skipped) > 0 {
+		fmt.Fprintf(os.Stderr, "\nSkipped:\n")
+		skipped := make([]string, 0, len(rep.Skipped))
+		for sym := range rep.Skipped {
+			skipped = append(skipped, sym)
+		}
+		sort.Strings(skipped)
+		for _, sym := range skipped {
+			fmt.Fprintf(os.Stderr, "  %-8s %s\n", sym, rep.Skipped[sym])
+		}
+	}
+	if *out != "" {
+		fmt.Fprintf(os.Stderr, "\nTo use it, copy to $NQ_DATA_DIR/shares_outstanding.csv,\n"+
+			"or replace internal/market/assets/shares_outstanding.csv and rebuild.\n")
+	}
+	return nil
 }
