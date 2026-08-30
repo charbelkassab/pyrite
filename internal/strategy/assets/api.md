@@ -56,6 +56,7 @@ if (fast === null) return;      // not enough data yet
 | --- | --- |
 | `ctx.universe()` | array of symbols tradable today |
 | `ctx.universe([...])` | **setup() only** — set the tradable symbol list; the data for it is loaded before the first day |
+| `ctx.universe("sp500")` | **setup() only** — the S&P 500 *as it stood on each simulated day* |
 | `ctx.symbols()` | same as `ctx.universe()` |
 | `ctx.hasData(sym)` | whether the symbol has a price today |
 | `ctx.price(sym)` | today's split- and dividend-adjusted close |
@@ -67,6 +68,39 @@ if (fast === null) return;      // not enough data yet
 
 Use `ctx.price()` for return maths. Use `ctx.rawPrice()` only when you need
 the literal printed price.
+
+### Point-in-time index membership
+
+`ctx.universe("sp500")` is different from every other universe name. The others
+are fixed lists of companies that matter *today*; this one resolves per session
+from recorded index membership.
+
+```js
+function setup(ctx) {
+  ctx.universe("sp500");   // the index as it actually stood, day by day
+  ctx.warmup(130);
+}
+
+function onDay(ctx) {
+  if (!ctx.isFirstTradingDayOfMonth()) return;
+  ctx.equalWeight(ctx.rank("momentum", 20, { window: 126 }));
+}
+```
+
+`ctx.universe()` then returns only the symbols that were constituents on that
+date. Names that had not joined yet are invisible, and names that were later
+dropped are present for exactly as long as they were in the index.
+
+**Why this is not a detail.** A backtest that picks from "the S&P 500" meaning
+today's list is choosing from a universe that already knows which companies
+survived. It cannot pick Silicon Valley Bank in 2022, because SVB is not on
+today's list — so the strategy never takes the loss it would really have taken.
+With point-in-time membership it can, and does. Nvidia is likewise absent before
+November 2001 and Tesla before December 2020, so a momentum strategy cannot
+quietly select them years before anyone could have.
+
+Anything named alongside the index stays available, so a strategy can hold the
+index constituents and a bond ETF together.
 
 ## Indicators
 

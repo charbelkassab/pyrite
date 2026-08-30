@@ -402,6 +402,7 @@ func (s *Server) execute(ctx context.Context, run *Run, req runRequest) {
 		InitialCash: req.InitialCash,
 		Benchmarks:  market.DedupeSymbols(req.Benchmarks),
 		Universe:    market.DedupeSymbols(req.Universe),
+		Index:       indexFrom(req.Universe),
 		MaxLeverage: req.MaxLeverage,
 		RiskFree:    req.RiskFree,
 		Params:      req.Params,
@@ -709,6 +710,16 @@ var Examples = []Example{
 
 // ---- helpers -------------------------------------------------------------
 
+// indexFrom picks a point-in-time index name out of a requested universe.
+func indexFrom(universe []string) string {
+	for _, u := range universe {
+		if idx := market.IndexUniverse(u); idx != "" {
+			return idx
+		}
+	}
+	return ""
+}
+
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(status)
@@ -821,6 +832,7 @@ func (s *Server) executeSweep(ctx context.Context, run *Run, req sweepRequest) {
 		InitialCash: req.InitialCash,
 		Benchmarks:  market.DedupeSymbols(req.Benchmarks),
 		Universe:    market.DedupeSymbols(req.Universe),
+		Index:       indexFrom(req.Universe),
 		MaxLeverage: req.MaxLeverage,
 		RiskFree:    req.RiskFree,
 	}

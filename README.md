@@ -105,6 +105,7 @@ real market data as part of the project's [prompt corpus](internal/strategy/test
 | *"Trade KO against PEP when their price ratio is 2 standard deviations from its 60 day average."* | Market-neutral pairs trade with shorting |
 | *"Hold SPY normally but move to cash for a month whenever the VIX closes above 30."* | Volatility regime filter |
 | *"Each month hold the 2 strongest S&P 500 sector ETFs by 3 month momentum."* | Sector rotation |
+| *"Every month hold the 20 strongest S&P 500 stocks over the last 6 months."* | Selects from **point-in-time** index membership, not today's list |
 | *"Hold SPY from November through April and cash from May through October."* | Seasonality |
 | *"Once a week read the news about Apple, ask the AI if the tone is positive, hold AAPL if so."* | Calls a model **inside** the backtest |
 | *"Invest $500 into VTI on the first trading day of every month and never sell."* | Dollar-cost averaging |
@@ -400,10 +401,18 @@ options and futures, dividends as cash (they are reinvested via adjusted closes)
 market impact for large orders, borrow availability for shorts, delistings and
 spin-offs.
 
-**The symbol lists are still survivorship-biased.** The share-count table is
-now real, but the universes still name companies that matter *today*. Fixing
-that needs point-in-time index membership and prices for delisted names, which
-is a separate problem — see [docs/limitations.md](docs/limitations.md).
+**Survivorship bias is fixed for the S&P 500, and only for it.** The universe
+name `sp500` resolves per simulated day from recorded index membership, so a
+2022 backtest can pick Silicon Valley Bank and take the loss it really produced,
+and cannot pick Tesla before it joined in December 2020. The bundled table holds
+881 tenures across 502 current and 379 former constituents, rebuilt with
+`natural-quant ingest index`.
+
+The other universes (`megacap`, `tech`, `dow`, …) are still today's companies,
+and the remaining half of the problem is prices: free vendors do not serve
+delisted securities, so a dropped name resolves to a data error rather than a
+position unless you supply its history through `NQ_CSV_DIR`. See
+[docs/limitations.md](docs/limitations.md).
 
 **Modelled:** commissions, slippage (5 bps by default, not zero), short borrow
 cost, splits and dividends, cash drag, next-open fills.

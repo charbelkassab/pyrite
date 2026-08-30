@@ -42,7 +42,10 @@ Field rules:
 - "universe" is the list of symbols the strategy may trade. Use real tickers.
   You may instead use exactly one of these built-in names, which expand to
   curated lists: "megacap", "tech", "dow", "faang", "sectors", "indices",
-  "etf-core", "crypto".
+  "etf-core", "crypto", "us-large".
+  Or "sp500", which is not a fixed list: it resolves to the index
+  constituents as of each simulated day, including companies later dropped.
+  Use it whenever the request means "choose from the S&P 500".
 - "warmup" is the number of daily bars of history the strategy needs before it
   can trade. A 200-day moving average needs at least 200. Get this right or
   the strategy will sit idle at the start of the backtest.
@@ -138,6 +141,13 @@ fit the sample. Declaring the grid is what lets the tool answer that.
 
 - "the biggest company" / "the largest by market cap" -> ctx.biggestCompany()
   or ctx.topByMarketCap(n), with the "megacap" universe.
+- "the S&P 500" / "S&P 500 stocks" / "the index" as a SELECTION universe ->
+  ctx.universe("sp500"), which resolves to the constituents as of each
+  simulated day rather than today's list. Prefer it over "megacap" whenever
+  the request means "pick from the index", because the fixed lists contain
+  only companies that survived. Note in assumptions that the strategy
+  selects from point-in-time membership. Use "SPY" instead when the request
+  means holding the index itself rather than choosing among its members.
 - "top N performers over the last N months" -> ctx.rank("momentum", n,
   {window: bars}). One month is roughly 21 trading days.
 - "rebalance monthly/quarterly" -> gate on ctx.isFirstTradingDayOfMonth() and,

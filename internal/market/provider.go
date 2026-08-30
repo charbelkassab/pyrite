@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 )
 
@@ -28,6 +29,12 @@ type Store struct {
 	provider Provider
 	cache    *DiskCache
 	fund     *Fundamentals
+	// members holds lazily loaded point-in-time index membership tables,
+	// keyed by index name.
+	memberMu sync.Mutex
+	members  map[string]*Membership
+	// dataDir lets a user override a bundled membership table.
+	dataDir string
 
 	mu   sync.RWMutex
 	mem  map[string]*Series
@@ -55,6 +62,33 @@ func (s *Store) ProviderName() string { return s.provider.Name() }
 
 // Fundamentals exposes the share-count table used for market-cap ranking.
 func (s *Store) Fundamentals() *Fundamentals { return s.fund }
+
+// SetDataDir tells the store where to look for user overrides of bundled
+// reference data.
+func (s *Store) SetDataDir(dir string) { s.dataDir = dir }
+
+// Membership returns the point-in-time constituent table for an index,
+// loading it on first use.
+func (s *Store) Membership(index string) (*Membership, error) {
+	name := IndexUniverse(index)
+	if name == "" {
+		name = strings.ToLower(strings.TrimSpace(index))
+	}
+	s.memberMu.Lock()
+	defer s.memberMu.Unlock()
+	if s.members == nil {
+		s.members = map[string]*Membership{}
+	}
+	if m, ok := s.members[name]; ok {
+		return m, nil
+	}
+	m, err := LoadMembership(name, s.dataDir)
+	if err != nil {
+		return nil, err
+	}
+	s.members[name] = m
+	return m, nil
+}
 
 // Get returns the full cached series for a symbol, fetching if needed.
 //

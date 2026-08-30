@@ -163,6 +163,24 @@ func UniverseKeys() []string {
 	return out
 }
 
+// IndexUniverses are universes resolved from point-in-time membership rather
+// than a fixed list. They cannot be expanded without knowing the date, so
+// ResolveUniverse deliberately returns nothing for them and the engine
+// resolves them per session instead.
+var IndexUniverses = map[string]string{
+	"sp500":   "sp500",
+	"s&p500":  "sp500",
+	"spx":     "sp500",
+	"sp-500":  "sp500",
+	"s&p 500": "sp500",
+}
+
+// IndexUniverse maps a name to its membership table, or "" if the name is not
+// a point-in-time index.
+func IndexUniverse(name string) string {
+	return IndexUniverses[strings.ToLower(strings.TrimSpace(name))]
+}
+
 // ResolveUniverse maps a name to a symbol list. It accepts a built-in
 // universe key, a comma-separated list of tickers, or a single ticker.
 func ResolveUniverse(name string) []string {
@@ -172,6 +190,11 @@ func ResolveUniverse(name string) []string {
 	}
 	if u, ok := Universes[strings.ToLower(name)]; ok {
 		return append([]string(nil), u.Symbols...)
+	}
+	// A point-in-time index has no static answer; the caller must resolve it
+	// against a date.
+	if IndexUniverse(name) != "" {
+		return nil
 	}
 	parts := strings.Split(name, ",")
 	out := make([]string, 0, len(parts))

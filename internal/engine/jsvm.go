@@ -237,6 +237,14 @@ func (v *strategyVM) installContext() error {
 		if len(call.Arguments) == 0 {
 			return rt.ToValue(e.tradableSymbols())
 		}
+		// A point-in-time index name cannot be expanded to a fixed list, so
+		// it is recorded on the spec and resolved per session instead.
+		if name, ok := call.Argument(0).Export().(string); ok {
+			if idx := market.IndexUniverse(name); idx != "" {
+				e.spec.Index = idx
+				return rt.ToValue(e.tradableSymbols())
+			}
+		}
 		syms := toSymbolList(call.Argument(0).Export())
 		if len(syms) > 0 {
 			e.spec.Universe = syms
@@ -1041,9 +1049,17 @@ func (v *strategyVM) rankUniverse(call goja.FunctionCall) []string {
 func (e *Engine) tradableSymbols() []string {
 	out := make([]string, 0, len(e.series))
 	for sym := range e.series {
-		if _, ok := e.adjPrices[sym]; ok {
-			out = append(out, sym)
+		if _, ok := e.adjPrices[sym]; !ok {
+			continue
 		}
+		// Under a point-in-time index, a symbol is only selectable on days it
+		// was actually a member. Loading the union of the window is what makes
+		// dropped names available at all; this is what stops a strategy
+		// picking one before it joined or after it left.
+		if e.members != nil && !e.members.WasMember(sym, e.today) {
+			continue
+		}
+		out = append(out, sym)
 	}
 	sort.Strings(out)
 	return out

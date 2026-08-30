@@ -261,6 +261,7 @@ func prepareSearch(fs *flag.FlagSet, prompt string, o searchOpts) (*searchSetup,
 		opts.Benchmarks = market.ResolveUniverse(o.benchmark)
 	}
 	if o.universe != "" {
+		opts.Index = market.IndexUniverse(o.universe)
 		opts.Universe = market.ResolveUniverse(o.universe)
 	}
 	opts.ApplyDefaults()

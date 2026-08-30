@@ -46,6 +46,7 @@ func New(cfg *config.Config) (*App, error) {
 
 	provider := buildProvider(cfg)
 	store := market.NewStore(provider, diskCache, fund)
+	store.SetDataDir(cfg.DataDir)
 
 	aiCacheDir, err := cfg.CacheDir("ai-cache")
 	if err != nil {
@@ -128,6 +129,9 @@ type RunOptions struct {
 	InitialCash float64
 	Benchmarks  []string
 	Universe    []string
+	// Index names a point-in-time index universe such as "sp500", resolved
+	// per session rather than flattened to a fixed list.
+	Index       string
 	Fill        engine.FillModel
 	Costs       *engine.Costs
 	MaxLeverage float64
@@ -183,6 +187,29 @@ func BuildSpec(plan *strategy.Plan, prompt string, opts RunOptions) engine.Spec 
 	if len(opts.Universe) > 0 {
 		universe = market.DedupeSymbols(opts.Universe)
 	}
+	// A point-in-time index cannot be flattened to a fixed list here, because
+	// which symbols it holds depends on the day. It travels on the spec and
+	// the engine resolves it per session.
+	index := opts.Index
+	if index == "" {
+		for _, u := range append(append([]string{}, opts.Universe...), plan.Universe...) {
+			if idx := market.IndexUniverse(u); idx != "" {
+				index = idx
+				break
+			}
+		}
+	}
+	if index != "" {
+		// Anything else named alongside the index stays as an extra symbol,
+		// so "sp500 plus TLT" works.
+		kept := universe[:0]
+		for _, u := range universe {
+			if market.IndexUniverse(u) == "" {
+				kept = append(kept, u)
+			}
+		}
+		universe = kept
+	}
 	benchmarks := plan.Benchmarks
 	if len(opts.Benchmarks) > 0 {
 		benchmarks = market.DedupeSymbols(opts.Benchmarks)
@@ -204,6 +231,7 @@ func BuildSpec(plan *strategy.Plan, prompt string, opts RunOptions) engine.Spec 
 		RiskFreeRate:    opts.RiskFree,
 		Warmup:          plan.Warmup,
 		Params:          opts.Params,
+		Index:           index,
 	}
 	if opts.Costs != nil {
 		spec.Costs = *opts.Costs

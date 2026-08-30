@@ -481,3 +481,120 @@ func TestEmptyUniverseAfterSetupIsStillAnError(t *testing.T) {
 		t.Errorf("the error should name the problem: %v", err)
 	}
 }
+
+// A point-in-time index is only worth having if it actually restricts what a
+// strategy can see. These check that it does, in both directions.
+func TestPointInTimeIndexRestrictsTheTradableSet(t *testing.T) {
+	// The synthetic provider serves any symbol, so the universe here is
+	// decided purely by membership, which is what we want to test.
+	spec := baseSpec(`
+		function setup(ctx) { ctx.universe("sp500"); }
+		function onDay(ctx) {
+			if (ctx.dayIndex === 0) ctx.state.first = ctx.universe();
+			ctx.state.last = ctx.universe();
+		}
+	`)
+	spec.Universe = nil
+	spec.Start = "2021-01-04"
+	spec.End = "2023-12-29"
+	spec.OmitDayRecords = true
+
+	e := New(spec, newTestStore(t))
+	res, err := e.Run(context.Background())
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if res.Spec.Index != "sp500" {
+		t.Fatalf("the index was not recorded on the spec: %q", res.Spec.Index)
+	}
+
+	// Silicon Valley Bank was in the index at the start of this window and
+	// gone by the end. Both facts must be visible.
+	if !e.members.WasMember("SIVB", "2021-06-30") {
+		t.Error("SIVB should be a member in mid-2021")
+	}
+	if e.members.WasMember("SIVB", "2023-12-01") {
+		t.Error("SIVB should have left the index by December 2023")
+	}
+
+	// And the loaded series must include it — a universe that never loads the
+	// failed names cannot avoid survivorship bias however it filters.
+	if _, ok := e.series["SIVB"]; !ok {
+		t.Error("a name that was a member during the window must be loaded")
+	}
+}
+
+func TestPointInTimeIndexHidesFutureMembers(t *testing.T) {
+	// Tesla joined in December 2020. A 2018-2019 backtest must not see it.
+	//
+	// The signal is a fill, not ctx.state: the JS state object is not backed
+	// by any Go map, so reading e.state from a test would pass vacuously
+	// whatever the engine did.
+	code := `
+		function setup(ctx) { ctx.universe("sp500"); }
+		function onDay(ctx) {
+			if (ctx.hasPosition("TSLA")) return;
+			if (ctx.universe().indexOf("TSLA") >= 0) ctx.buy("TSLA", { notional: 100 }, "TSLA is in the index");
+		}
+	`
+	before := baseSpec(code)
+	before.Universe = nil
+	before.Start, before.End = "2018-01-02", "2019-12-31"
+	before.OmitDayRecords = true
+
+	res, err := New(before, newTestStore(t)).Run(context.Background())
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	for _, f := range res.Fills {
+		if f.Symbol == "TSLA" {
+			t.Fatalf("TSLA was traded on %s, before it joined the index", f.Date)
+		}
+	}
+
+	// The same strategy over a window that reaches the joining date must
+	// trade it, or the filter is simply hiding everything.
+	after := baseSpec(code)
+	after.Universe = nil
+	after.Start, after.End = "2018-01-02", "2021-12-31"
+	after.OmitDayRecords = true
+
+	res2, err := New(after, newTestStore(t)).Run(context.Background())
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	var traded market.Day
+	for _, f := range res2.Fills {
+		if f.Symbol == "TSLA" {
+			traded = f.Date
+			break
+		}
+	}
+	if traded == "" {
+		t.Fatal("TSLA was never traded even after it joined the index")
+	}
+	if traded < "2020-12-21" {
+		t.Errorf("TSLA first traded on %s, before its 2020-12-21 joining date", traded)
+	}
+}
+
+func TestIndexUniverseKeepsExtraSymbols(t *testing.T) {
+	// "the index plus a bond ETF" has to work.
+	spec := baseSpec(`
+		function setup(ctx) { ctx.universe("sp500"); }
+		function onDay(ctx) {}
+	`)
+	spec.Universe = []string{"TLT"}
+	spec.Index = "sp500"
+	spec.Start = "2022-01-03"
+	spec.End = "2022-06-30"
+	spec.OmitDayRecords = true
+
+	e := New(spec, newTestStore(t))
+	if _, err := e.Run(context.Background()); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if _, ok := e.series["TLT"]; !ok {
+		t.Error("a symbol named alongside the index should still be loaded")
+	}
+}

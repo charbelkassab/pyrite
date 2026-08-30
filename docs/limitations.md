@@ -42,21 +42,54 @@ still being flattered.
 
 ### Survivorship bias
 
-The built-in universes (`megacap`, `tech`, `faang`, `dow`, `sectors`) list the
-companies that matter **today**. They are not point-in-time index membership.
+The built-in universes (`megacap`, `tech`, `faang`, `dow`, `sectors`,
+`us-large`) list the companies that matter **today**. They are not
+point-in-time index membership.
 
 A backtest starting in 2013 that "holds the top 5 mega caps" is choosing from a
 list that already knows NVIDIA became enormous and that Nokia and Sears did not.
 Real-time, you would have been picking from a list containing names that went on
 to fail, and your results would have been worse — often much worse.
 
-This is the single largest distortion in the tool. It affects any strategy that
-selects from a universe rather than trading a fixed ticker. A strategy that only
-trades SPY is unaffected.
+**Use `sp500` instead.** That one universe is resolved per simulated day from
+recorded index membership, not from today's list:
 
-**Mitigation:** pin the universe yourself to symbols that existed and were
-plausible choices at the start of your window, using `--universe` or the
-universe field in the interface.
+```bash
+natural-quant run "each month hold the 20 strongest S&P 500 names" --universe sp500
+```
+
+The bundled table
+([`internal/market/assets/sp500_membership.csv`](../internal/market/assets/sp500_membership.csv))
+holds 881 tenures across 502 current and 379 former constituents, reconstructed
+from Wikipedia's current-components list and its 407 recorded add/remove events
+by undoing each change in reverse from today. Rebuild it with:
+
+```bash
+natural-quant ingest index --index sp500
+```
+
+What that changes in practice: a 2022 run can select Silicon Valley Bank,
+Signature Bank and First Republic and take the losses they produced, because
+all three were genuinely in the index then. A survivorship-biased universe
+contains none of them, so the strategy never takes those losses. In the other
+direction, Tesla is invisible before December 2020 and Nvidia before November
+2001, so a momentum strategy cannot quietly select them years early.
+
+**What is still wrong:**
+
+- Wikipedia is citable and checkable but not authoritative, and the change log
+  thins out the further back you go. Before its reach, the universe falls back
+  to the earliest constituents on record and the run says so.
+- **Membership is only half the problem.** Backtesting a dropped name also needs
+  its prices, and free vendors do not serve delisted securities — a symbol that
+  stopped trading resolves to a per-symbol data error rather than a position.
+  Point `NQ_CSV_DIR` at your own data for those; it is the one source that can
+  hold them.
+- Only the S&P 500 has a table so far.
+
+For the other universes the mitigation is unchanged: pin the symbol list
+yourself to names that existed and were plausible choices at the start of your
+window.
 
 ### Market capitalisation, now from filings
 

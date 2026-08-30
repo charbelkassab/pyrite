@@ -40,6 +40,7 @@ Usage:
   natural-quant walkforward "<strategy>" [--train 504] [--test 126]
                                          [--embargo 200] [--anchored]
   natural-quant ingest edgar [--symbols A,B] [--universe megacap] [--out FILE]
+  natural-quant ingest index [--index sp500] [--out FILE]
   natural-quant version
 
 Common flags:
@@ -227,6 +228,9 @@ func cmdRun(args []string) error {
 		opts.Benchmarks = market.ResolveUniverse(*benchmark)
 	}
 	if *universe != "" {
+		// A point-in-time index has no static expansion, so it travels as a
+		// name and the engine resolves it per session.
+		opts.Index = market.IndexUniverse(*universe)
 		opts.Universe = market.ResolveUniverse(*universe)
 	}
 	if *fillClose {
@@ -687,8 +691,10 @@ func cmdIngest(args []string) error {
 	switch args[0] {
 	case "edgar":
 		return cmdIngestEDGAR(args[1:])
+	case "index":
+		return cmdIngestIndex(args[1:])
 	default:
-		return fmt.Errorf("unknown ingest source %q (only \"edgar\" is available)", args[0])
+		return fmt.Errorf("unknown ingest source %q (available: edgar, index)", args[0])
 	}
 }
 
@@ -796,4 +802,62 @@ func printCritique(res *engine.Result) {
 		fmt.Printf("\n  %s%s\n", marker, f.Title)
 		fmt.Printf("        %s\n", wrapIndent(f.Detail, 68, "        "))
 	}
+}
+
+// cmdIngestIndex rebuilds the point-in-time index membership table.
+func cmdIngestIndex(args []string) error {
+	fs := flag.NewFlagSet("ingest index", flag.ContinueOnError)
+	index := fs.String("index", "sp500", "which index to rebuild")
+	out := fs.String("out", "", "write here instead of stdout")
+	agent := fs.String("user-agent", os.Getenv("NQ_WIKI_USER_AGENT"),
+		"identify yourself to Wikipedia (optional but polite)")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if *index != "sp500" {
+		return fmt.Errorf("only \"sp500\" is supported so far, not %q", *index)
+	}
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	w := market.NewWikipediaIndex(*agent)
+	fmt.Fprintf(os.Stderr, "fetching current constituents...\n")
+	current, err := w.CurrentMembers(ctx)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(os.Stderr, "fetching the change log...\n")
+	changes, err := w.Changes(ctx)
+	if err != nil {
+		return err
+	}
+
+	tenures := market.BuildMembership(current, changes)
+
+	var buf bytes.Buffer
+	if err := market.WriteMembershipCSV(&buf, *index, tenures, len(changes)); err != nil {
+		return err
+	}
+	if *out == "" {
+		fmt.Print(buf.String())
+	} else {
+		if err := os.WriteFile(*out, buf.Bytes(), 0o644); err != nil {
+			return err
+		}
+		fmt.Printf("wrote %s\n", *out)
+	}
+
+	// Count how many names the table holds that are no longer members: those
+	// are exactly the ones survivorship bias would have removed.
+	var dropped int
+	for _, t := range tenures {
+		if t.To != "" {
+			dropped++
+		}
+	}
+	fmt.Fprintf(os.Stderr, "\n%d current constituents, %d recorded changes\n", len(current), len(changes))
+	fmt.Fprintf(os.Stderr, "%d tenures, of which %d have ended — those are the names a\n", len(tenures), dropped)
+	fmt.Fprintf(os.Stderr, "survivorship-biased universe silently drops.\n")
+	return nil
 }

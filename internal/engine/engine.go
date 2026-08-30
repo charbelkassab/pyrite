@@ -59,6 +59,16 @@ type Spec struct {
 	// Seed makes any stochastic strategy behaviour reproducible.
 	Seed int64 `json:"seed,omitempty"`
 
+	// Index, when set, resolves the universe from point-in-time index
+	// membership instead of a fixed list. The engine loads every symbol that
+	// held membership at any point in the window, and lets each session trade
+	// only the ones that were actually members that day.
+	//
+	// This is the fix for the survivorship bias the docs call the single
+	// largest distortion in the tool: a universe of "companies in the index"
+	// that means today's list already knows which companies survived.
+	Index string `json:"index,omitempty"`
+
 	// OmitDayRecords drops the per-session audit trail from the result.
 	//
 	// A DayRecord holds every position, order, log line and model exchange
@@ -247,6 +257,8 @@ type Engine struct {
 	yearSeen    map[string]bool
 	lastOfMonth map[market.Day]bool
 	lastOfWeek  map[market.Day]bool
+	// members is the point-in-time constituent table when spec.Index is set.
+	members *market.Membership
 }
 
 // stopOrder is a standing exit registered by the strategy.
@@ -278,7 +290,7 @@ func (e *Engine) Run(ctx context.Context) (*Result, error) {
 	// may be about to choose one. The check is not skipped, only deferred to
 	// the pass below, which always runs.
 	loaded := false
-	if len(e.spec.Universe) > 0 {
+	if len(e.spec.Universe) > 0 || e.spec.Index != "" {
 		if err := e.loadData(ctx); err != nil {
 			return nil, err
 		}
@@ -310,10 +322,12 @@ func (e *Engine) Run(ctx context.Context) (*Result, error) {
 	// reload only fetches symbols that are genuinely new.
 	beforeUniverse := strings.Join(e.spec.Universe, ",")
 	beforeWarmup := e.spec.Warmup
+	beforeIndex := e.spec.Index
 	if err := vm.callSetup(); err != nil {
 		return nil, fmt.Errorf("strategy setup() failed: %w", err)
 	}
-	if !loaded || strings.Join(e.spec.Universe, ",") != beforeUniverse || e.spec.Warmup != beforeWarmup {
+	if !loaded || strings.Join(e.spec.Universe, ",") != beforeUniverse ||
+		e.spec.Warmup != beforeWarmup || e.spec.Index != beforeIndex {
 		// loadData reports an empty universe itself, which is the case a
 		// strategy that never names a symbol falls into.
 		if err := e.loadData(ctx); err != nil {
@@ -517,6 +531,34 @@ func (e *Engine) recordAI(rec AICall) {
 // loadData fetches every symbol the run needs and builds the trading calendar.
 func (e *Engine) loadData(ctx context.Context) error {
 	symbols := market.DedupeSymbols(e.spec.Universe)
+
+	// A point-in-time index loads every symbol that held membership at any
+	// point in the window — including the names that were later dropped,
+	// which are exactly the ones survivorship bias removes. Which of them any
+	// given session may trade is decided per day, in tradableSymbols.
+	if e.spec.Index != "" {
+		m, err := e.store.Membership(e.spec.Index)
+		if err != nil {
+			return err
+		}
+		e.members = m
+		from, to := e.spec.Start, e.spec.End
+		if from == "" {
+			from = market.Day(earliestPossible)
+		}
+		if to == "" {
+			to = market.NewDay(time.Now())
+		}
+		if !m.Covers(from) {
+			e.warn(fmt.Sprintf("index membership is only recorded from %s; before that the "+
+				"universe falls back to the earliest constituents on record", m.Earliest))
+		}
+		symbols = market.DedupeSymbols(append(m.EverMembers(from, to), symbols...))
+		if len(symbols) == 0 {
+			return fmt.Errorf("no %s constituents recorded between %s and %s", e.spec.Index, from, to)
+		}
+	}
+
 	if len(symbols) == 0 {
 		return fmt.Errorf("the strategy has an empty universe: nothing to trade")
 	}
