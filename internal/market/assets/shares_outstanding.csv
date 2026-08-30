@@ -1,0 +1,198 @@
+# natural-quant — point-in-time shares outstanding (APPROXIMATE REFERENCE DATA)
+#
+# WHY THIS FILE EXISTS
+# Ranking a universe by market capitalisation requires shares outstanding as
+# of the historical date, not today. No free, keyless API serves that series:
+# Yahoo's quoteSummary and v7/quote endpoints now return HTTP 401, and the
+# remaining free tiers are current-snapshot only. Using a single present-day
+# share count for the whole backtest would silently corrupt any historical
+# ranking, so natural-quant ships this table instead.
+#
+# HOW IT IS USED
+#   market cap on day D = raw close on D * shares outstanding effective on D
+# Values are piecewise constant: a row takes effect on its date and holds
+# until the next row for that symbol. Raw (unadjusted) closes are used
+# deliberately, because share counts are stated in actual, unadjusted shares —
+# so every split shows up as a step change in the rows below.
+#
+# ACCURACY AND LIMITATIONS — PLEASE READ
+#  * Figures are rounded to roughly three significant figures. They are good
+#    enough to rank mega caps against each other, which is what "the biggest
+#    company by market cap" needs. They are NOT accounting-grade.
+#  * Symbols with a single row use one recent share count for all of history.
+#    Ranking accuracy for those names degrades the further back you test.
+#  * This is a survivorship-biased universe: it lists companies that matter
+#    today plus past leaders, not a true point-in-time index membership.
+#  * Delistings, spin-offs and share-class consolidations are not modelled.
+#
+# OVERRIDE IT
+#  * Drop your own file at $NQ_DATA_DIR/shares_outstanding.csv to replace this
+#    one wholesale (same format, comments allowed).
+#  * Or point natural-quant at a real fundamentals vendor — see
+#    docs/data-sources.md.
+#
+# CONTRIBUTIONS WELCOME: corrections with a citation are the single highest
+# value contribution to this project.
+#
+# format: symbol,effective_date,shares_outstanding,name
+symbol,effective_date,shares_outstanding,name
+
+# --- Companies that have actually contended for #1 by market cap ---
+AAPL,2010-01-01,910000000,Apple Inc.
+AAPL,2012-01-01,935000000,Apple Inc.
+AAPL,2014-06-09,6000000000,Apple Inc.
+AAPL,2015-01-01,5800000000,Apple Inc.
+AAPL,2016-01-01,5500000000,Apple Inc.
+AAPL,2017-01-01,5250000000,Apple Inc.
+AAPL,2018-01-01,4830000000,Apple Inc.
+AAPL,2019-01-01,4520000000,Apple Inc.
+AAPL,2020-01-01,4380000000,Apple Inc.
+AAPL,2020-08-31,17100000000,Apple Inc.
+AAPL,2021-01-01,16800000000,Apple Inc.
+AAPL,2022-01-01,16350000000,Apple Inc.
+AAPL,2023-01-01,15850000000,Apple Inc.
+AAPL,2024-01-01,15450000000,Apple Inc.
+AAPL,2025-01-01,15050000000,Apple Inc.
+AAPL,2026-01-01,14800000000,Apple Inc.
+
+MSFT,2010-01-01,8900000000,Microsoft Corporation
+MSFT,2013-01-01,8350000000,Microsoft Corporation
+MSFT,2015-01-01,8050000000,Microsoft Corporation
+MSFT,2017-01-01,7700000000,Microsoft Corporation
+MSFT,2019-01-01,7650000000,Microsoft Corporation
+MSFT,2021-01-01,7550000000,Microsoft Corporation
+MSFT,2023-01-01,7440000000,Microsoft Corporation
+MSFT,2025-01-01,7430000000,Microsoft Corporation
+
+NVDA,2015-01-01,540000000,NVIDIA Corporation
+NVDA,2017-01-01,600000000,NVIDIA Corporation
+NVDA,2019-01-01,610000000,NVIDIA Corporation
+NVDA,2021-07-20,2480000000,NVIDIA Corporation
+NVDA,2023-01-01,2470000000,NVIDIA Corporation
+NVDA,2024-06-10,24600000000,NVIDIA Corporation
+NVDA,2025-01-01,24500000000,NVIDIA Corporation
+NVDA,2026-01-01,24300000000,NVIDIA Corporation
+
+GOOGL,2010-01-01,320000000,Alphabet Inc.
+GOOGL,2014-04-03,680000000,Alphabet Inc.
+GOOGL,2016-01-01,690000000,Alphabet Inc.
+GOOGL,2019-01-01,695000000,Alphabet Inc.
+GOOGL,2021-01-01,675000000,Alphabet Inc.
+GOOGL,2022-07-18,13000000000,Alphabet Inc.
+GOOGL,2023-01-01,12750000000,Alphabet Inc.
+GOOGL,2024-01-01,12460000000,Alphabet Inc.
+GOOGL,2025-01-01,12200000000,Alphabet Inc.
+GOOGL,2026-01-01,12050000000,Alphabet Inc.
+
+AMZN,2010-01-01,450000000,"Amazon.com, Inc."
+AMZN,2015-01-01,465000000,"Amazon.com, Inc."
+AMZN,2018-01-01,487000000,"Amazon.com, Inc."
+AMZN,2021-01-01,505000000,"Amazon.com, Inc."
+AMZN,2022-06-06,10180000000,"Amazon.com, Inc."
+AMZN,2023-01-01,10250000000,"Amazon.com, Inc."
+AMZN,2024-01-01,10400000000,"Amazon.com, Inc."
+AMZN,2025-01-01,10600000000,"Amazon.com, Inc."
+
+META,2013-01-01,2400000000,"Meta Platforms, Inc."
+META,2016-01-01,2870000000,"Meta Platforms, Inc."
+META,2019-01-01,2850000000,"Meta Platforms, Inc."
+META,2022-01-01,2740000000,"Meta Platforms, Inc."
+META,2023-01-01,2600000000,"Meta Platforms, Inc."
+META,2024-01-01,2540000000,"Meta Platforms, Inc."
+META,2025-01-01,2510000000,"Meta Platforms, Inc."
+
+BRK-B,2012-01-01,2450000000,Berkshire Hathaway Inc. (B-equivalent)
+BRK-B,2018-01-01,2470000000,Berkshire Hathaway Inc. (B-equivalent)
+BRK-B,2022-01-01,2210000000,Berkshire Hathaway Inc. (B-equivalent)
+BRK-B,2025-01-01,2150000000,Berkshire Hathaway Inc. (B-equivalent)
+
+TSLA,2015-01-01,125000000,"Tesla, Inc."
+TSLA,2018-01-01,170000000,"Tesla, Inc."
+TSLA,2020-08-31,930000000,"Tesla, Inc."
+TSLA,2021-01-01,960000000,"Tesla, Inc."
+TSLA,2022-08-25,3140000000,"Tesla, Inc."
+TSLA,2024-01-01,3180000000,"Tesla, Inc."
+TSLA,2025-01-01,3220000000,"Tesla, Inc."
+
+AVGO,2018-01-01,440000000,Broadcom Inc.
+AVGO,2023-01-01,455000000,Broadcom Inc.
+AVGO,2024-07-15,4670000000,Broadcom Inc.
+AVGO,2025-01-01,4700000000,Broadcom Inc.
+
+XOM,2010-01-01,4900000000,Exxon Mobil Corporation
+XOM,2014-01-01,4300000000,Exxon Mobil Corporation
+XOM,2018-01-01,4240000000,Exxon Mobil Corporation
+XOM,2021-01-01,4230000000,Exxon Mobil Corporation
+XOM,2024-01-01,4400000000,Exxon Mobil Corporation
+
+GE,2005-01-01,10600000000,General Electric Company
+GE,2012-01-01,10500000000,General Electric Company
+GE,2016-01-01,9000000000,General Electric Company
+GE,2019-01-01,8700000000,General Electric Company
+GE,2021-08-02,1100000000,GE Aerospace
+GE,2025-01-01,1070000000,GE Aerospace
+
+# --- Remaining large caps: single recent share count (see limitations above) ---
+LLY,2015-01-01,950000000,Eli Lilly and Company
+JPM,2015-01-01,2800000000,JPMorgan Chase & Co.
+V,2015-01-01,2000000000,Visa Inc.
+MA,2015-01-01,930000000,Mastercard Incorporated
+UNH,2015-01-01,920000000,UnitedHealth Group Incorporated
+WMT,2024-02-26,8050000000,Walmart Inc.
+WMT,2010-01-01,2680000000,Walmart Inc.
+JNJ,2015-01-01,2410000000,Johnson & Johnson
+PG,2015-01-01,2360000000,The Procter & Gamble Company
+ORCL,2015-01-01,2800000000,Oracle Corporation
+HD,2015-01-01,995000000,The Home Depot Inc.
+CVX,2015-01-01,1850000000,Chevron Corporation
+MRK,2015-01-01,2530000000,Merck & Co. Inc.
+ABBV,2015-01-01,1770000000,AbbVie Inc.
+KO,2015-01-01,4310000000,The Coca-Cola Company
+PEP,2015-01-01,1370000000,PepsiCo Inc.
+COST,2015-01-01,443000000,Costco Wholesale Corporation
+ADBE,2015-01-01,425000000,Adobe Inc.
+CSCO,2015-01-01,3960000000,Cisco Systems Inc.
+CRM,2015-01-01,960000000,"Salesforce, Inc."
+NFLX,2015-01-01,425000000,"Netflix, Inc."
+AMD,2015-01-01,1620000000,"Advanced Micro Devices, Inc."
+INTC,2015-01-01,4330000000,Intel Corporation
+IBM,2015-01-01,925000000,International Business Machines
+PFE,2015-01-01,5670000000,Pfizer Inc.
+T,2015-01-01,7180000000,AT&T Inc.
+VZ,2015-01-01,4210000000,Verizon Communications Inc.
+DIS,2015-01-01,1810000000,The Walt Disney Company
+BAC,2015-01-01,7600000000,Bank of America Corporation
+WFC,2015-01-01,3300000000,Wells Fargo & Company
+C,2015-01-01,1890000000,Citigroup Inc.
+TSM,2015-01-01,5190000000,Taiwan Semiconductor (ADR)
+PLTR,2020-10-01,2300000000,Palantir Technologies Inc.
+MU,2015-01-01,1110000000,Micron Technology Inc.
+QCOM,2015-01-01,1100000000,QUALCOMM Incorporated
+TXN,2015-01-01,910000000,Texas Instruments Incorporated
+AMAT,2015-01-01,810000000,"Applied Materials, Inc."
+NOW,2015-01-01,207000000,"ServiceNow, Inc."
+ISRG,2015-01-01,355000000,Intuitive Surgical Inc.
+BKNG,2015-01-01,33000000,Booking Holdings Inc.
+LIN,2018-10-31,480000000,Linde plc
+ACN,2015-01-01,625000000,Accenture plc
+MCD,2015-01-01,715000000,McDonald's Corporation
+ABT,2015-01-01,1740000000,Abbott Laboratories
+TMO,2015-01-01,380000000,Thermo Fisher Scientific Inc.
+DHR,2015-01-01,720000000,Danaher Corporation
+NKE,2015-01-01,1480000000,"NIKE, Inc."
+PM,2015-01-01,1550000000,Philip Morris International Inc.
+RTX,2015-01-01,1330000000,RTX Corporation
+HON,2015-01-01,650000000,Honeywell International Inc.
+UNP,2015-01-01,600000000,Union Pacific Corporation
+CAT,2015-01-01,480000000,Caterpillar Inc.
+GS,2015-01-01,310000000,The Goldman Sachs Group Inc.
+MS,2015-01-01,1600000000,Morgan Stanley
+BLK,2015-01-01,150000000,"BlackRock, Inc."
+SCHW,2015-01-01,1820000000,The Charles Schwab Corporation
+SPGI,2015-01-01,305000000,S&P Global Inc.
+LOW,2015-01-01,560000000,"Lowe's Companies, Inc."
+SBUX,2015-01-01,1130000000,Starbucks Corporation
+BA,2015-01-01,750000000,The Boeing Company
+GM,2015-01-01,1000000000,General Motors Company
+F,2015-01-01,3900000000,Ford Motor Company
+UBER,2019-05-10,2090000000,"Uber Technologies, Inc."

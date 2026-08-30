@@ -1,0 +1,21 @@
+# Build output
+/natural-quant
+/dist/
+*.exe
+
+# Local configuration and secrets — never commit API keys
+.env
+.env.*
+config.json
+*.local.json
+
+# Runtime data: market cache, AI cache, saved runs
+/.natural-quant/
+/data/cache/
+/data/runs/
+
+# Editor / OS noise
+.DS_Store
+.idea/
+.vscode/
+*.swp

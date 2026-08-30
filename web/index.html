@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>natural-quant — backtest trading strategies written in plain English</title>
+<meta name="description" content="Describe a trading strategy in plain English. natural-quant turns it into code, backtests it on real market data, and charts it against any stock, index or other strategy.">
+<link rel="stylesheet" href="/styles.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📈</text></svg>">
+<script src="/vendor/lightweight-charts.standalone.production.js"></script>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-mark" aria-hidden="true">▚</span>
+    <span class="brand-name">natural-quant</span>
+  </div>
+  <div class="topbar-status" id="healthStatus" aria-live="polite"></div>
+</header>
+
+<div class="layout">
+
+  <!-- ═══════════════ chart side (main) ═══════════════ -->
+  <main class="stage">
+
+    <div id="emptyState" class="empty">
+      <h1>Describe a trading strategy. Watch how it would have done.</h1>
+      <p>
+        Add a <strong>view</strong> on the right — a strategy written in plain English,
+        or any stock, index or ETF. Everything you add is charted on the same scale so
+        you can compare it directly.
+      </p>
+      <div class="empty-examples" id="emptyExamples"></div>
+    </div>
+
+    <div id="workspace" hidden>
+
+      <div class="chart-toolbar">
+        <div class="ranges" id="rangeButtons">
+          <button data-range="1m">1M</button>
+          <button data-range="3m">3M</button>
+          <button data-range="6m">6M</button>
+          <button data-range="ytd">YTD</button>
+          <button data-range="1y">1Y</button>
+          <button data-range="3y">3Y</button>
+          <button data-range="5y">5Y</button>
+          <button data-range="all" class="active">All</button>
+          <button data-range="custom" id="btnCustomRange">Custom…</button>
+        </div>
+        <span class="period-status" id="periodStatus"></span>
+        <div class="toolbar-spacer"></div>
+        <div class="toggles">
+          <label class="check" title="Rebase every series to the start of the visible window">
+            <input type="checkbox" id="tglPercent" checked> % return
+          </label>
+          <label class="check"><input type="checkbox" id="tglLog"> Log</label>
+          <label class="check"><input type="checkbox" id="tglMarkers" checked> Trades</label>
+          <label class="check"><input type="checkbox" id="tglDrawdown"> Drawdown</label>
+          <label class="check check-fun" title="Fantasy mode: replays the curve with every losing day flattened. Not a real result.">
+            <input type="checkbox" id="tglNoDown"> No down days
+          </label>
+        </div>
+      </div>
+
+      <div class="chart-wrap">
+        <div id="chart" class="chart"></div>
+        <div id="legend" class="legend"></div>
+        <div id="chartBusy" class="chart-busy" hidden>
+          <div class="progress"><div class="progress-bar" id="progressBar"></div></div>
+          <div class="progress-label" id="progressLabel">working…</div>
+        </div>
+      </div>
+
+      <div id="ddChartWrap" class="chart-wrap chart-wrap-small" hidden>
+        <div id="ddChart" class="chart chart-small"></div>
+        <div class="subchart-label">Drawdown from peak</div>
+      </div>
+
+      <div class="chart-footnote">
+        <span id="baselineNote"></span>
+        <span id="markerNote"></span>
+      </div>
+
+      <div class="tabs" role="tablist">
+        <button class="tab active" data-tab="overview" role="tab">Overview</button>
+        <button class="tab" data-tab="day" role="tab">Day detail</button>
+        <button class="tab" data-tab="trades" role="tab">Trades</button>
+        <button class="tab" data-tab="code" role="tab">Code</button>
+        <button class="tab" data-tab="notes" role="tab">Notes</button>
+      </div>
+
+      <section class="tabpanel" id="tab-overview">
+        <div class="table-scroll">
+          <table class="metrics" id="metricsTable"></table>
+        </div>
+      </section>
+
+      <section class="tabpanel" id="tab-day" hidden>
+        <div id="dayDetail" class="day-detail">
+          <p class="muted">Click anywhere on the chart to inspect that day.</p>
+        </div>
+      </section>
+
+      <section class="tabpanel" id="tab-trades" hidden>
+        <div class="table-scroll">
+          <table class="trades" id="tradesTable"></table>
+        </div>
+      </section>
+
+      <section class="tabpanel" id="tab-code" hidden>
+        <div class="code-head">
+          <select id="codeSelect" class="input"></select>
+          <button class="btn btn-ghost" id="btnCopyCode">Copy</button>
+          <button class="btn btn-ghost" id="btnRerunCode">Run edited code</button>
+        </div>
+        <textarea id="codeView" class="code" spellcheck="false"></textarea>
+      </section>
+
+      <section class="tabpanel" id="tab-notes" hidden>
+        <div id="notesBody" class="notes"></div>
+      </section>
+
+    </div>
+  </main>
+
+  <!-- ═══════════════ views panel (right) ═══════════════ -->
+  <aside class="views-panel">
+
+    <div class="views-head">
+      <h2>Views</h2>
+      <button class="btn btn-primary btn-sm" id="btnAddView">+ Add view</button>
+    </div>
+
+    <!-- add-view composer -->
+    <div class="composer" id="composer" hidden>
+      <div class="seg" id="composerKind">
+        <button data-kind="strategy" class="active">Strategy</button>
+        <button data-kind="symbol">Ticker or index</button>
+      </div>
+
+      <div id="composerStrategy">
+        <textarea id="promptInput" class="prompt" rows="4" spellcheck="false"
+          placeholder="Buy $100 of the biggest company by market cap every day, and sell when it is no longer number one."></textarea>
+        <details class="examples-drop">
+          <summary>Backtest settings</summary>
+          <p class="hint">
+            Strategies run over as much history as the data allows. Use
+            <strong>Custom…</strong> on the chart to narrow the period.
+          </p>
+          <div class="settings">
+            <label class="field"><span>Starting capital</span>
+              <input type="number" id="optCash" value="100000" min="100" step="1000"></label>
+            <label class="field"><span>Slippage (bps)</span>
+              <input type="number" id="optSlippage" value="5" min="0" step="1"></label>
+            <label class="field"><span>Commission (%)</span>
+              <input type="number" id="optCommission" value="0" min="0" step="0.01"></label>
+            <label class="field"><span>Benchmark</span>
+              <input type="text" id="optBenchmark" value="SPY" spellcheck="false"></label>
+            <label class="field field-wide"><span>Fill orders at</span>
+              <select id="optFill">
+                <option value="next_open">Next session's open (no lookahead)</option>
+                <option value="close">Same day's close (optimistic)</option>
+              </select>
+            </label>
+            <label class="check"><input type="checkbox" id="optShort" checked> Allow short selling</label>
+          </div>
+        </details>
+      </div>
+
+      <div id="composerSymbol" hidden>
+        <input type="text" id="symbolInput" class="input" spellcheck="false"
+               placeholder="AAPL, QQQ, GLD, bitcoin…" autocomplete="off">
+        <div id="symbolSuggest" class="suggest" hidden></div>
+        <div class="quickadd" id="quickAdd">
+          <button data-sym="SPY">S&amp;P 500</button>
+          <button data-sym="QQQ">Nasdaq</button>
+          <button data-sym="^DJI">Dow</button>
+          <button data-sym="GLD">Gold</button>
+          <button data-sym="BTC-USD">Bitcoin</button>
+          <button data-sym="TLT">Bonds</button>
+        </div>
+      </div>
+
+      <div class="row">
+        <button id="btnCreateView" class="btn btn-primary">Add</button>
+        <button id="btnCancelCompose" class="btn btn-ghost">Cancel</button>
+      </div>
+      <p class="hint" id="composeHint"></p>
+    </div>
+
+    <!-- the list of views -->
+    <div class="views-list" id="viewsList"></div>
+
+    <div class="views-foot">
+      <div class="panel-links">
+        <button class="linkbtn" id="btnApiDocs" type="button">Strategy API</button>
+      </div>
+    </div>
+  </aside>
+</div>
+
+<!-- ═══ colour picker popover ═══ -->
+<div class="swatch-pop" id="swatchPop" hidden>
+  <div class="swatch-grid" id="swatchGrid"></div>
+</div>
+
+<dialog id="periodDialog" class="dialog dialog-narrow">
+  <div class="dialog-head">
+    <h2>Custom period</h2>
+    <button class="btn btn-ghost" id="btnClosePeriod">Close</button>
+  </div>
+  <div class="dialog-body">
+    <p class="hint">
+      Reloads every view over this window. Strategies replay from code they are
+      already compiled to, so this costs no model call.
+    </p>
+    <div class="settings">
+      <label class="field"><span>From</span><input type="date" id="periodFrom"></label>
+      <label class="field"><span>To</span><input type="date" id="periodTo"></label>
+    </div>
+    <div class="row">
+      <button class="btn btn-primary" id="btnApplyPeriod">Apply</button>
+      <button class="btn btn-ghost" id="btnMaxPeriod">Max available</button>
+    </div>
+    <p class="hint" id="periodHint"></p>
+  </div>
+</dialog>
+
+<dialog id="apiDialog" class="dialog">
+  <div class="dialog-head">
+    <h2>Strategy API</h2>
+    <button class="btn btn-ghost" id="btnCloseApi">Close</button>
+  </div>
+  <pre id="apiBody" class="api-body"></pre>
+</dialog>
+
+<input type="hidden" id="optStart">
+<input type="hidden" id="optEnd">
+<script src="/app.js"></script>
+</body>
+</html>

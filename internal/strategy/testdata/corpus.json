@@ -1,0 +1,340 @@
+[
+  {
+    "id": "marketcap-leader",
+    "family": "fundamental",
+    "prompt": "Buy $100 of the biggest company by market cap every day, and sell when that company is no longer number one.",
+    "expect": {
+      "trades": true
+    }
+  },
+  {
+    "id": "marketcap-top5-equal",
+    "family": "fundamental",
+    "prompt": "Hold the 5 largest US companies by market cap, equally weighted, rebalanced monthly.",
+    "expect": {
+      "trades": true,
+      "positions_at_end": 5
+    }
+  },
+  {
+    "id": "golden-cross",
+    "family": "trend",
+    "prompt": "Buy SPY when the 50 day moving average crosses above the 200 day moving average, and sell when it crosses back below.",
+    "expect": {
+      "trades": true
+    }
+  },
+  {
+    "id": "golden-cross-trailing",
+    "family": "trend",
+    "prompt": "Golden cross on QQQ with a 12% trailing stop.",
+    "expect": {
+      "trades": true
+    }
+  },
+  {
+    "id": "trend-filter-cash",
+    "family": "trend",
+    "prompt": "Hold QQQ while it is above its 200 day moving average and move entirely to cash whenever it closes below.",
+    "expect": {
+      "trades": true
+    }
+  },
+  {
+    "id": "momentum-rotation",
+    "family": "momentum",
+    "prompt": "Every month, hold an equal weight basket of the 3 best performing big tech stocks over the previous 6 months.",
+    "expect": {
+      "trades": true
+    }
+  },
+  {
+    "id": "dual-momentum",
+    "family": "momentum",
+    "prompt": "Dual momentum: each month hold whichever of SPY or AGG had the higher 12 month return, but only if that return is positive, otherwise hold cash.",
+    "expect": {
+      "trades": true
+    }
+  },
+  {
+    "id": "sector-rotation",
+    "family": "momentum",
+    "prompt": "Each month hold the 2 strongest S&P 500 sector ETFs by 3 month momentum, equally weighted.",
+    "expect": {
+      "trades": true
+    }
+  },
+  {
+    "id": "relative-strength",
+    "family": "momentum",
+    "prompt": "Buy AAPL only when it has outperformed SPY over the last 60 trading days, otherwise stay in cash.",
+    "expect": {
+      "trades": true
+    }
+  },
+  {
+    "id": "rsi-mean-reversion",
+    "family": "mean-reversion",
+    "prompt": "Buy any mega cap stock whose RSI drops below 30, size each position at 10% of the portfolio, and sell when RSI goes back above 55.",
+    "expect": {
+      "trades": true
+    }
+  },
+  {
+    "id": "bollinger-reversion",
+    "family": "mean-reversion",
+    "prompt": "Buy SPY when it closes below its lower Bollinger band and sell when it closes back above the middle band.",
+    "expect": {
+      "trades": true
+    }
+  },
+  {
+    "id": "buy-the-dip",
+    "family": "mean-reversion",
+    "prompt": "Whenever SPY falls more than 3% in a single day, buy with half the available cash, and sell that position after it gains 5%.",
+    "expect": {
+      "trades": true
+    }
+  },
+  {
+    "id": "zscore-reversion",
+    "family": "mean-reversion",
+    "prompt": "Buy a mega cap when its price is more than 2 standard deviations below its 20 day average and exit when it returns to the average.",
+    "expect": {
+      "trades": true
+    }
+  },
+  {
+    "id": "macd-cross",
+    "family": "indicator",
+    "prompt": "Trade SPY on MACD: go long when the MACD line crosses above its signal line and go to cash when it crosses below.",
+    "expect": {
+      "trades": true
+    }
+  },
+  {
+    "id": "breakout-52w",
+    "family": "indicator",
+    "prompt": "Buy any big tech stock that makes a new 52 week high and sell it if it falls 10% from the highest price since you bought it.",
+    "expect": {
+      "trades": true
+    }
+  },
+  {
+    "id": "atr-position-size",
+    "family": "risk",
+    "prompt": "Buy SPY but size the position so that a 2 ATR move is no more than 1% of the portfolio, and use a stop at 2 ATR below entry.",
+    "expect": {
+      "trades": true
+    }
+  },
+  {
+    "id": "sixty-forty",
+    "family": "allocation",
+    "prompt": "Hold 60% SPY and 40% AGG, rebalancing back to those weights every quarter.",
+    "expect": {
+      "trades": true,
+      "positions_at_end": 2
+    }
+  },
+  {
+    "id": "all-weather",
+    "family": "allocation",
+    "prompt": "Hold 30% VTI, 40% TLT, 15% IEF, 7.5% GLD and 7.5% VNQ, rebalanced annually.",
+    "expect": {
+      "trades": true
+    }
+  },
+  {
+    "id": "dca-monthly",
+    "family": "allocation",
+    "prompt": "Invest $500 into VTI on the first trading day of every month and never sell.",
+    "expect": {
+      "trades": true
+    }
+  },
+  {
+    "id": "equal-weight-faang",
+    "family": "allocation",
+    "prompt": "Hold an equal weight portfolio of the FAANG stocks, rebalanced every month.",
+    "expect": {
+      "trades": true
+    }
+  },
+  {
+    "id": "pairs-ko-pep",
+    "family": "long-short",
+    "prompt": "Trade KO against PEP. When the ratio of their prices is more than 2 standard deviations below its 60 day average, go long KO and short PEP, and close both when the ratio returns to its average.",
+    "expect": {
+      "trades": true,
+      "allow_short": true
+    }
+  },
+  {
+    "id": "market-neutral",
+    "family": "long-short",
+    "prompt": "Each month go long the 3 best performing mega caps over 6 months and short the 3 worst, equally weighted on both sides.",
+    "expect": {
+      "trades": true,
+      "allow_short": true
+    }
+  },
+  {
+    "id": "short-downtrend",
+    "family": "long-short",
+    "prompt": "Short SPY whenever it is below its 200 day moving average and cover when it moves back above.",
+    "expect": {
+      "trades": true,
+      "allow_short": true
+    }
+  },
+  {
+    "id": "vix-regime",
+    "family": "regime",
+    "prompt": "Hold SPY normally, but move to cash for the next month whenever the VIX closes above 30.",
+    "expect": {
+      "trades": true
+    }
+  },
+  {
+    "id": "drawdown-circuit-breaker",
+    "family": "regime",
+    "prompt": "Hold SPY, but if the portfolio drops 15% below its all time high, sell everything and wait until SPY is back above its 50 day average before buying again.",
+    "expect": {
+      "trades": true
+    }
+  },
+  {
+    "id": "vol-target",
+    "family": "regime",
+    "prompt": "Hold SPY but scale the position so that the portfolio targets 10% annualised volatility, adjusting weekly.",
+    "expect": {
+      "trades": true
+    }
+  },
+  {
+    "id": "sell-in-may",
+    "family": "seasonality",
+    "prompt": "Hold SPY from November through April and stay in cash from May through October.",
+    "expect": {
+      "trades": true
+    }
+  },
+  {
+    "id": "day-of-week",
+    "family": "seasonality",
+    "prompt": "Buy SPY at the close every Monday and sell it at the close on Friday.",
+    "expect": {
+      "trades": true
+    }
+  },
+  {
+    "id": "turn-of-month",
+    "family": "seasonality",
+    "prompt": "Hold SPY only during the last trading day of the month and the first three trading days of the next month.",
+    "expect": {
+      "trades": true
+    }
+  },
+  {
+    "id": "hold-n-days",
+    "family": "mechanics",
+    "prompt": "Buy the worst performing mega cap of the last week and hold it for exactly 10 trading days, then sell regardless.",
+    "expect": {
+      "trades": true
+    }
+  },
+  {
+    "id": "stop-and-target",
+    "family": "mechanics",
+    "prompt": "Buy NVDA when RSI is under 40 with a 7% stop loss and a 20% take profit.",
+    "expect": {
+      "trades": true
+    }
+  },
+  {
+    "id": "concentration-cap",
+    "family": "mechanics",
+    "prompt": "Hold the top 10 mega caps by momentum but never let any single position exceed 15% of the portfolio, rebalanced monthly.",
+    "expect": {
+      "trades": true
+    }
+  },
+  {
+    "id": "low-vol-factor",
+    "family": "factor",
+    "prompt": "Each month hold the 5 lowest volatility mega cap stocks, equally weighted.",
+    "expect": {
+      "trades": true
+    }
+  },
+  {
+    "id": "correlation-filter",
+    "family": "factor",
+    "prompt": "Hold an equal weight basket of the 4 mega caps least correlated with SPY over the past 90 days, rebalanced monthly.",
+    "expect": {
+      "trades": true
+    }
+  },
+  {
+    "id": "compound-conditions",
+    "family": "compound",
+    "prompt": "Buy SPY only when it is above its 200 day average, the VIX is below 20, and the 14 day RSI is between 40 and 60. Exit if any of those stop being true.",
+    "expect": {
+      "trades": true
+    }
+  },
+  {
+    "id": "crypto-weekend",
+    "family": "compound",
+    "prompt": "Buy bitcoin every Friday and sell it every Monday.",
+    "expect": {
+      "trades": true
+    }
+  },
+  {
+    "id": "ai-news-sentiment",
+    "family": "ai",
+    "prompt": "Once a week, read the latest news headlines about Apple and ask the AI whether the tone is positive or negative. Hold AAPL when it is positive and stay in cash when it is negative.",
+    "expect": {
+      "needs_ai": true,
+      "trades": true
+    }
+  },
+  {
+    "id": "ai-contrarian-article",
+    "family": "ai",
+    "prompt": "Every Monday, look up the second article on Yahoo Finance about the S&P 500, ask the AI whether it is bullish or bearish, and take the opposite position in SPY for the week.",
+    "expect": {
+      "needs_ai": true,
+      "trades": true
+    }
+  },
+  {
+    "id": "ai-rank-universe",
+    "family": "ai",
+    "prompt": "Every month, ask the AI which two of the mega cap technology companies have the strongest business momentum right now, and hold those two equally weighted.",
+    "expect": {
+      "needs_ai": true,
+      "trades": true
+    }
+  },
+  {
+    "id": "vague-beat-market",
+    "family": "vague",
+    "prompt": "Something that beats the market but is not too risky.",
+    "expect": {}
+  },
+  {
+    "id": "vague-warren",
+    "family": "vague",
+    "prompt": "Invest like Warren Buffett would.",
+    "expect": {}
+  },
+  {
+    "id": "vague-safe-income",
+    "family": "vague",
+    "prompt": "A conservative portfolio for someone retiring in five years.",
+    "expect": {}
+  }
+]

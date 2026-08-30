@@ -1,0 +1,29 @@
+natural-quant
+Copyright (c) 2026 Charbel Kassab
+
+This product bundles the following third-party components.
+
+--------------------------------------------------------------------------
+TradingView Lightweight Charts v5.2.0
+web/vendor/lightweight-charts.standalone.production.js
+Copyright (c) 2025 TradingView, Inc.
+Licensed under the Apache License, Version 2.0
+https://github.com/tradingview/lightweight-charts/blob/master/LICENSE
+
+Vendored rather than loaded from a CDN so that natural-quant runs fully
+offline and ships as a single self-contained binary.
+--------------------------------------------------------------------------
+goja — github.com/dop251/goja
+Copyright (c) 2016 Dmitry Panov
+Licensed under the MIT License
+--------------------------------------------------------------------------
+
+MARKET DATA
+
+Historical prices are retrieved at runtime from Yahoo Finance's public chart
+endpoint. That data is not redistributed with this project and remains subject
+to Yahoo's terms of use. Users are responsible for their own compliance.
+
+The bundled share-count table (internal/market/assets/shares_outstanding.csv)
+is approximate reference data compiled for this project from public filings and
+company disclosures. See the header of that file for its accuracy caveats.
