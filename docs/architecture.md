@@ -130,6 +130,30 @@ actually re-optimised on that schedule. The embargo between them defaults to the
 strategy's warm-up, which is exactly the horizon over which an indicator can
 leak across the boundary.
 
+## The guided search, and why the wall is in the engine
+
+`engine.RunAgent` proposes, measures and re-proposes under a budget. The
+proposer is an interface, and the model-backed implementation lives in `app`.
+That split is not tidiness: it puts the experimental protocol in the package
+that owns the data, where it can be tested without a model at all.
+
+Three things enforce it, in descending order of how much they can be
+accidentally undone:
+
+1. **The type.** `Candidate` has no out-of-sample field. A proposer cannot
+   read what the struct does not hold, and a test asserts the field stays
+   absent.
+2. **The runs.** Every candidate is executed with `Start`/`End` pinned to the
+   training window, so even an in-process proposer inspecting a `Result`
+   would find nothing outside it.
+3. **The sequence.** The holdout is read once, after the loop has exited,
+   against the candidate that training scores already chose.
+
+The test that matters re-runs a candidate's code over the training window
+independently and requires the metrics the proposer was shown to match it
+exactly — and separately asserts that the full period is longer, so the
+comparison cannot pass vacuously.
+
 ## NaN is a wire-format problem, not a maths problem
 
 `encoding/json` refuses to encode NaN and ±Inf. Because `net/http` has already

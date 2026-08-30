@@ -565,3 +565,113 @@ func num(v float64) string {
 	}
 	return strconv.FormatFloat(v, 'f', 6, 64)
 }
+
+// cmdImprove runs a guided search under a withheld holdout period.
+func cmdImprove(args []string) error {
+	fs := flag.NewFlagSet("improve", flag.ContinueOnError)
+	_, objective, csvPath, workers, maxCombos, cash, from, to, universe, benchmark, offline, asJSON :=
+		addCommonSearchFlags(fs)
+	codeFile, warmup := addCodeFileFlags(fs)
+	budget := fs.Int("budget", 6, "how many candidates to try")
+	holdout := fs.Float64("holdout", 0.3, "fraction of the period withheld from the search")
+	sweepParams := fs.Bool("sweep-params", true, "also search each candidate's declared parameters")
+	goal := fs.String("goal", "", "what to improve, in your own words")
+
+	prompt, flagArgs := splitPromptAndFlags(args)
+	if err := fs.Parse(flagArgs); err != nil {
+		return err
+	}
+	prompt = strings.TrimSpace(strings.Join(append([]string{prompt}, fs.Args()...), " "))
+	if prompt == "" && *codeFile == "" {
+		return fmt.Errorf("describe a strategy to improve, for example:\n" +
+			"  natural-quant improve \"a golden cross on SPY\"\n" +
+			"  or pass --code-file strategy.js")
+	}
+	_ = csvPath
+
+	s, err := prepareSearch(fs, prompt, searchOpts{
+		offline: offline, cash: *cash, from: *from, to: *to,
+		universe: *universe, benchmark: *benchmark,
+		codeFile: *codeFile, warmup: *warmup,
+	})
+	if err != nil {
+		return err
+	}
+	defer s.cancel()
+
+	if !s.app.Cfg.AnyProviderEnabled() {
+		return fmt.Errorf("a guided search needs a model. Set OPENAI_API_KEY, CEREBRAS_API_KEY or KIMI_API_KEY")
+	}
+
+	proposer := &app.ModelProposer{App: s.app, Goal: *goal, Seed: s.plan}
+	res, err := engine.RunAgent(s.ctx, engine.AgentSpec{
+		Base: s.spec, Budget: *budget, HoldoutFraction: *holdout,
+		Objective: *objective, SweepParams: *sweepParams,
+		MaxCombos: *maxCombos, Workers: *workers,
+	}, s.app.Store, proposer, func(n, budget int, c engine.Candidate) {
+		if c.Error != "" {
+			fmt.Fprintf(os.Stderr, "  %d/%d  failed: %s\n", n, budget, truncate(c.Error, 60))
+			return
+		}
+		fmt.Fprintf(os.Stderr, "  %d/%d  training %s: %s   return %s\n",
+			n, budget, *objective, ratio(c.TrainScore), pct(c.TrainMetrics.TotalReturn))
+	})
+	if err != nil {
+		return err
+	}
+
+	if *asJSON {
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		return enc.Encode(res)
+	}
+	printAgent(res)
+	return nil
+}
+
+// printAgent renders the search and the single holdout measurement.
+func printAgent(res *engine.AgentResult) {
+	fmt.Printf("\nSearched %s to %s. Held back %s to %s.\n",
+		res.TrainStart, res.TrainEnd, res.HoldoutStart, res.HoldoutEnd)
+	fmt.Printf("The holdout was not visible during the search and was scored once, at the end.\n\n")
+
+	fmt.Printf("  %-3s %10s %10s %10s %7s  %s\n", "#", "return", "CAGR", "drawdown", "trust", "what changed")
+	for i, c := range res.Candidates {
+		marker := " "
+		if i == res.BestIndex {
+			marker = "*"
+		}
+		if c.Error != "" {
+			fmt.Printf("%s %-3d %s\n", marker, c.Iteration, truncate(c.Error, 60))
+			continue
+		}
+		fmt.Printf("%s %-3d %10s %10s %10s %7d  %s\n", marker, c.Iteration,
+			pct(c.TrainMetrics.TotalReturn), pct(c.TrainMetrics.CAGR),
+			pct(c.TrainMetrics.MaxDrawdown), c.Critique.TrustScore,
+			truncate(c.Rationale, 44))
+	}
+
+	if res.BestIndex < 0 || res.Holdout == nil {
+		if res.Verdict != "" {
+			fmt.Printf("\n  %s\n", wrapIndent(res.Verdict, 74, "  "))
+		}
+		return
+	}
+
+	best := res.Candidates[res.BestIndex]
+	h := res.Holdout.Metrics
+	fmt.Printf("\nThe winner, on data the search never saw\n")
+	fmt.Printf("  %-24s %14s %14s\n", "", "training", "holdout")
+	fmt.Printf("  %-24s %14s %14s\n", "Total return", pct(best.TrainMetrics.TotalReturn), pct(h.TotalReturn))
+	fmt.Printf("  %-24s %14s %14s\n", "Annualised (CAGR)", pct(best.TrainMetrics.CAGR), pct(h.CAGR))
+	fmt.Printf("  %-24s %14s %14s\n", "Sharpe ratio", ratio(best.TrainMetrics.Sharpe), ratio(h.Sharpe))
+	fmt.Printf("  %-24s %14s %14s\n", "Max drawdown", pct(best.TrainMetrics.MaxDrawdown), pct(h.MaxDrawdown))
+	if res.Degradation.Defined() {
+		fmt.Printf("  %-24s %29s\n", "Surviving fraction", pct(float64(res.Degradation)))
+	}
+
+	if res.Verdict != "" {
+		fmt.Printf("\n  %s\n", wrapIndent(res.Verdict, 74, "  "))
+	}
+	printCritique(res.Holdout)
+}

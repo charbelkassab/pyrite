@@ -11,6 +11,7 @@ to any stock, index or rival strategy you want to compare it with.
 [Quick start](#quick-start-60-seconds) ·
 [Examples](#what-you-can-ask-for) ·
 [Searching](#one-backtest-is-not-evidence) ·
+[Improving](#make-this-better-without-the-usual-trap) ·
 [How it works](#how-it-works) ·
 [Which AI provider](#choosing-an-ai-provider) ·
 [Limitations](#limitations-please-read)
@@ -238,6 +239,47 @@ the tool that was never fitted to.
 
 Runs in parallel across your cores, sharing one copy of the price data — 400
 backtests in under half a second on a laptop.
+
+---
+
+## "Make this better", without the usual trap
+
+```
+natural-quant improve "a golden cross on SPY" --budget 8
+```
+
+A model proposes a variant, the harness backtests it, the model reads the
+result and proposes again. Under a fixed budget, it converges on something
+better than it started with.
+
+That loop is also an excellent way to build a strategy that fits one sample
+perfectly and has no edge whatever — which is why the harness, not the model,
+owns the data:
+
+- The period is split. The model is shown results from the **training window
+  only**, and every candidate is run over that window alone.
+- The `Candidate` type it receives has no out-of-sample field. It cannot read
+  what the struct does not hold.
+- The holdout is touched **once**, at the end, after the search has closed, to
+  score the winner that training data already chose.
+
+```
+Searched 2018-01-02 to 2022-03-04. Held back 2022-03-07 to 2023-12-29.
+The holdout was not visible during the search and was scored once, at the end.
+
+The winner, on data the search never saw
+                                training        holdout
+  Total return                     84.10%         11.62%
+  Annualised (CAGR)                16.02%          6.71%
+  Sharpe ratio                       1.31           0.54
+  Surviving fraction                          41.88%
+```
+
+The model is also handed the critique of each attempt, so it can act on a
+stated fault — "only 12 closed trades", "the returns are short volatility in
+disguise" — rather than guess at what to change. And it is told to stop when it
+has nothing worth trying, which is a legitimate answer and a better one than
+proposing noise.
 
 ---
 
@@ -477,6 +519,8 @@ natural-quant sweep "<strategy>"        # search the parameter space
 natural-quant walkforward "<strategy>"  # optimise in-sample, report out
                                [--train 504] [--test 126] [--embargo 200]
                                [--anchored]
+natural-quant improve "<strategy>"      # guided search against a blind holdout
+                               [--budget 6] [--holdout 0.3] [--goal "..."]
 
 natural-quant ingest edgar --universe megacap --user-agent "You you@example.com"
 natural-quant doctor           # check data, providers, caches

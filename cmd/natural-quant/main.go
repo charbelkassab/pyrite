@@ -39,6 +39,7 @@ Usage:
                                    [--csv out.csv] [--top 20]
   natural-quant walkforward "<strategy>" [--train 504] [--test 126]
                                          [--embargo 200] [--anchored]
+  natural-quant improve "<strategy>" [--budget 6] [--holdout 0.3] [--goal "..."]
   natural-quant ingest edgar [--symbols A,B] [--universe megacap] [--out FILE]
   natural-quant ingest index [--index sp500] [--out FILE]
   natural-quant version
@@ -97,6 +98,8 @@ func run() error {
 		return cmdSweep(args)
 	case "walkforward", "wf":
 		return cmdWalkForward(args)
+	case "improve":
+		return cmdImprove(args)
 	case "version", "-v", "--version":
 		fmt.Printf("natural-quant %s\n", version)
 		return nil
