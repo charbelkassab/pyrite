@@ -304,6 +304,9 @@ func (e *Engine) Run(ctx context.Context) (*Result, error) {
 	e.portfolio.AllowShort = e.spec.AllowShort
 	e.portfolio.AllowFractional = e.spec.AllowFractional
 	e.portfolio.MaxLeverage = e.spec.MaxLeverage
+	if e.spec.Costs.ImpactCoefficient > 0 {
+		e.portfolio.Impact = e.marketImpact
+	}
 
 	vm, err := newStrategyVM(e)
 	if err != nil {
@@ -507,6 +510,49 @@ func (e *Engine) activeParams() map[string]any {
 		out[d.Name] = e.paramValue(d.Name, d.Default)
 	}
 	return out
+}
+
+// marketImpact estimates the price concession for an order, as a fraction.
+//
+// Square-root law: impact = k * sigma * sqrt(|shares| / average daily volume),
+// with sigma the recent daily volatility. An order for a whole day's volume
+// therefore moves the price by roughly one daily standard deviation, which is
+// the empirical regularity the law encodes.
+//
+// It returns zero when volume or volatility is unavailable rather than
+// guessing: charging an invented cost is worse than charging none, because it
+// looks like modelling.
+func (e *Engine) marketImpact(symbol string, shares float64) float64 {
+	k := e.spec.Costs.ImpactCoefficient
+	if k <= 0 || shares == 0 {
+		return 0
+	}
+	const window = 20
+	_, _, closes, volumes := e.ohlcv(symbol, window+1)
+	if len(volumes) < window || len(closes) < window+1 {
+		return 0
+	}
+
+	var adv float64
+	for _, v := range volumes[len(volumes)-window:] {
+		adv += v
+	}
+	adv /= window
+	if adv <= 0 {
+		return 0
+	}
+
+	sigma := Stdev(Returns(closes), window)
+	if math.IsNaN(sigma) || sigma <= 0 {
+		return 0
+	}
+
+	participation := math.Abs(shares) / adv
+	impact := k * sigma * math.Sqrt(participation)
+	// A single order should not be charged more than the price. Beyond about
+	// a day's volume the square-root law stops describing anything real
+	// anyway, so the cap is honesty rather than safety.
+	return math.Min(impact, 0.5)
 }
 
 // recordAI files one model or search exchange against the current day and

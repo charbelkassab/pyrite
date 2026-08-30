@@ -167,7 +167,14 @@ func Criticise(res *Result) Critique {
 			"No commission and no slippage were charged, at an annual turnover of %.1fx. "+
 				"Trading costs scale with turnover, so this omission flatters exactly the "+
 				"strategies that trade most.", m.Turnover)
-	} else if m.Turnover > 10 {
+	}
+	if res.Spec.Costs.ImpactCoefficient == 0 && m.Turnover > 1 {
+		add(SeverityNote, "position size is free",
+			"No market impact was modelled, so a $10m order costs the same fraction as "+
+				"a $1,000 one. That holds at small size and not at large: re-run with "+
+				"impact enabled before concluding this scales.")
+	}
+	if m.Turnover > 10 {
 		add(SeverityWarning, "very high turnover",
 			"%.0fx annual turnover. Costs of %s were charged; a small error in the cost "+
 				"model is multiplied by that turnover.", m.Turnover, money(m.TotalCosts))

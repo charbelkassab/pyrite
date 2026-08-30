@@ -303,6 +303,9 @@ type runRequest struct {
 
 	SlippageBps   float64 `json:"slippage_bps,omitempty"`
 	CommissionPct float64 `json:"commission_pct,omitempty"`
+	// Impact turns on the square-root market impact model. 1 is the usual
+	// empirical coefficient; 0 disables it.
+	Impact float64 `json:"impact,omitempty"`
 
 	Params map[string]any `json:"params,omitempty"`
 }
@@ -457,6 +460,7 @@ func (s *Server) execute(ctx context.Context, run *Run, req runRequest) {
 	if req.CommissionPct > 0 {
 		spec.Costs.CommissionPct = req.CommissionPct
 	}
+	spec.Costs.ImpactCoefficient = req.Impact
 
 	opts.Progress = func(done, total int, day market.Day) {
 		pct := 0
@@ -888,6 +892,7 @@ func (s *Server) executeSweep(ctx context.Context, run *Run, req sweepRequest) {
 	if req.CommissionPct > 0 {
 		spec.Costs.CommissionPct = req.CommissionPct
 	}
+	spec.Costs.ImpactCoefficient = req.Impact
 
 	var err error
 	if req.WalkForward {

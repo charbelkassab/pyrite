@@ -457,7 +457,15 @@ position unless you supply its history through `NQ_CSV_DIR`. See
 [docs/limitations.md](docs/limitations.md).
 
 **Modelled:** commissions, slippage (5 bps by default, not zero), short borrow
-cost, splits and dividends, cash drag, next-open fills.
+cost, splits and dividends, cash drag, next-open fills, and — with `--impact 1`
+— market impact under the square-root law, so a large order pays for the
+liquidity it demands.
+
+The last one changes results more than anything else on this page. The same
+high-turnover strategy over the same period returns **-10% on $100,000 and
+-72% on $1bn**, purely because the second one has to move the market to get
+filled. Without it, position size is free and every strategy looks infinitely
+scalable.
 
 And the ordinary one: past performance says very little about future returns, an
 overfitted backtest says nothing at all, and it is easy to produce an overfitted

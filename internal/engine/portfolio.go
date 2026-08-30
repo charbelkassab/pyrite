@@ -106,6 +106,23 @@ type Costs struct {
 	ShortBorrowAnnualPct float64 `json:"short_borrow_annual_pct"`
 	// CashAnnualPct is interest earned on idle cash.
 	CashAnnualPct float64 `json:"cash_annual_pct"`
+
+	// ImpactCoefficient turns on a market impact model. Zero disables it.
+	//
+	// Slippage as a flat spread is a fixed cost per share, which is right for
+	// small orders and badly wrong for large ones: it says a $10m order in a
+	// thin name costs the same fraction as a $1,000 one. It does not. The
+	// square-root law says the cost of demanding liquidity grows with the
+	// square root of the fraction of a day's volume you take:
+	//
+	//     impact = k * volatility * sqrt(shares / average daily volume)
+	//
+	// so an order for a full day's volume moves the price by roughly one
+	// daily standard deviation. k near 1 is the usual empirical estimate.
+	//
+	// Without this, position size is free, which quietly flatters every
+	// strategy anyone would want to scale up.
+	ImpactCoefficient float64 `json:"impact_coefficient,omitempty"`
 }
 
 // DefaultCosts is a deliberately non-zero default. A backtest with zero
@@ -134,6 +151,11 @@ type Portfolio struct {
 	AllowShort bool
 	// MaxLeverage caps gross exposure as a multiple of equity.
 	MaxLeverage float64
+	// Impact returns the extra price concession, as a fraction, for trading
+	// this many shares of a symbol. The engine supplies it because it needs
+	// volume and volatility, which the portfolio does not hold. Nil disables
+	// the model.
+	Impact func(symbol string, shares float64) float64
 
 	realized   float64
 	commission float64
@@ -219,8 +241,12 @@ func (p *Portfolio) Execute(day market.Day, symbol string, shares, refPrice floa
 		}
 	}
 
-	// Slippage always moves against the trader.
+	// Slippage always moves against the trader, and so does impact: both are
+	// the cost of demanding liquidity rather than supplying it.
 	slipRate := p.Costs.SlippageBps / 10000.0
+	if p.Impact != nil {
+		slipRate += p.Impact(symbol, shares)
+	}
 	fillPrice := refPrice
 	if shares > 0 {
 		fillPrice = refPrice * (1 + slipRate)

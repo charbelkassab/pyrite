@@ -186,6 +186,8 @@ func cmdRun(args []string) error {
 	fillClose := fs.Bool("fill-close", false, "fill at the same day's close instead of the next open")
 	codeFile := fs.String("code-file", "", "run this JavaScript strategy instead of compiling a prompt")
 	costScan := fs.Bool("cost-scan", false, "also re-run at 0, 5, 20 and 50 bps of slippage")
+	impact := fs.Float64("impact", 0,
+		"market impact coefficient; 1 is the usual estimate, 0 disables the model")
 	warmupFlag := fs.Int("warmup", 0, "bars of history to load before the start date")
 	// Separate the prompt from the flags before parsing. Go's flag package
 	// stops at the first positional argument, so without this a command like
@@ -276,6 +278,7 @@ func cmdRun(args []string) error {
 	if *warmupFlag > 0 {
 		spec.Warmup = *warmupFlag
 	}
+	spec.Costs.ImpactCoefficient = *impact
 	lastPct := -1
 	opts.Progress = func(done, total int, day market.Day) {
 		pct := done * 100 / total
