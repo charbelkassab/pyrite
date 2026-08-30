@@ -88,6 +88,32 @@ A sweep reuses the whole `Run` lifecycle — progress, SSE, cancellation,
 persistence — because it is the same thing many times over. A parallel store
 for it would be duplication rather than design.
 
+### Is the interpreter fast enough? (measured, not assumed)
+
+The obvious next step after a sweep runner is a vectorised fast path — signals
+as boolean arrays fed to an allocation-free simulator, no interpreter in the
+inner loop. It is a large change, so it was budgeted first.
+
+Measured on a 14700HX, 28 threads, `BenchmarkSingleBacktest` and
+`BenchmarkSweep` in `internal/engine/bench_test.go`:
+
+```
+one backtest, 1258 sessions          9.7 ms      (~7.7 µs per simulated day)
+sweep, 16 combinations               47 ms
+sweep, 64 combinations              180 ms
+sweep, 1064 combinations           4.62 s        256 MB peak RSS
+```
+
+Ten thousand combinations extrapolates to roughly 45 seconds. That is a
+different regime from the one a fast path would be built for, so the fast path
+is **not built**, and the benchmarks stay in the tree as the evidence for that
+decision rather than as decoration. Re-run them before revisiting it.
+
+What the measurement did change: memory, not time. The 256 MB at a thousand
+combinations is why `Spec.OmitDayRecords` exists and why the PBO return matrix
+has an explicit budget — the constraint on a large search is what each run
+retains, not how fast it runs.
+
 ### Why the parallelism is nearly free
 
 `market.Store` is read-only once loaded and guards itself with a mutex, so N
