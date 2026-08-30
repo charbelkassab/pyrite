@@ -263,8 +263,13 @@ type Engine struct {
 	monthSeen   map[string]bool
 	weekSeen    map[string]bool
 	yearSeen    map[string]bool
-	lastOfMonth map[market.Day]bool
-	lastOfWeek  map[market.Day]bool
+	// firstOfMonth/Week/Year are computed once per session, before any hook
+	// or onDay runs, so every caller in that session gets the same answer.
+	firstOfMonth bool
+	firstOfWeek  bool
+	firstOfYear  bool
+	lastOfMonth  map[market.Day]bool
+	lastOfWeek   map[market.Day]bool
 	// members is the point-in-time constituent table when spec.Index is set.
 	members *market.Membership
 	// econ caches macro series a strategy has asked for, and records which
@@ -375,12 +380,21 @@ func (e *Engine) Run(ctx context.Context) (*Result, error) {
 		}
 		e.today = day
 		e.snapshotPrices(day)
+		e.markPeriodFlags(day)
 
 		// 1. Execute orders submitted yesterday, and any triggered stops.
+		//
+		// Stop fills and ordinary fills are kept apart so the two hooks can
+		// be told apart: "my stop was hit" and "my order filled" are
+		// different events, and a strategy that had to distinguish them by
+		// inspecting the reason string would be guessing.
 		var fills []Fill
+		var stopFills, orderFills []Fill
 		if e.spec.Fill == FillNextOpen {
-			fills = append(fills, e.runStops(day)...)
-			fills = append(fills, e.executePending(day)...)
+			stopFills = e.runStops(day)
+			orderFills = e.executePending(day)
+			fills = append(fills, stopFills...)
+			fills = append(fills, orderFills...)
 		}
 
 		// 2. Financing and trailing marks.
@@ -396,6 +410,18 @@ func (e *Engine) Run(ctx context.Context) (*Result, error) {
 		var dayErr string
 		if day >= e.spec.Start {
 			e.equityNow = e.portfolio.Equity(e.adjPrices)
+			// Period hooks run before onDay, so a monthly rebalance can be
+			// expressed in onMonth and the daily logic left alone.
+			if vm.onMonth != nil && e.firstOfMonth {
+				if err := vm.callPeriodHook(vm.onMonth); err != nil {
+					e.hookError(res, "onMonth", day, err)
+				}
+			}
+			if vm.onWeek != nil && e.firstOfWeek {
+				if err := vm.callPeriodHook(vm.onWeek); err != nil {
+					e.hookError(res, "onWeek", day, err)
+				}
+			}
 			if err := vm.callOnDay(); err != nil {
 				dayErr = err.Error()
 				res.StrategyErrors++
@@ -405,9 +431,30 @@ func (e *Engine) Run(ctx context.Context) (*Result, error) {
 
 		// 4. Under the close-fill model, orders execute immediately.
 		if e.spec.Fill == FillClose {
-			fills = append(fills, e.executeAt(day, e.pending, e.adjPrices)...)
+			closeFills := e.executeAt(day, e.pending, e.adjPrices)
 			e.pending = nil
-			fills = append(fills, e.runStops(day)...)
+			closeStops := e.runStops(day)
+			fills = append(fills, closeFills...)
+			fills = append(fills, closeStops...)
+			orderFills = append(orderFills, closeFills...)
+			stopFills = append(stopFills, closeStops...)
+		}
+
+		// 4b. Notify the strategy about what actually executed. This runs
+		// after onDay so a close-fill run reports its own fills in the same
+		// session, and after step 1 either way so the hooks always describe
+		// completed executions rather than intentions.
+		if day >= e.spec.Start {
+			for _, f := range stopFills {
+				if err := vm.callFillHook(vm.onStop, f); err != nil {
+					e.hookError(res, "onStop", day, err)
+				}
+			}
+			for _, f := range orderFills {
+				if err := vm.callFillHook(vm.onFill, f); err != nil {
+					e.hookError(res, "onFill", day, err)
+				}
+			}
 		}
 
 		// 5. Mark to market and record.
@@ -565,6 +612,47 @@ func (e *Engine) marketImpact(symbol string, shares float64) float64 {
 	// a day's volume the square-root law stops describing anything real
 	// anyway, so the cap is honesty rather than safety.
 	return math.Min(impact, 0.5)
+}
+
+// markPeriodFlags decides, once per session, whether this is the first
+// trading day of its month, week and year.
+//
+// Warm-up sessions deliberately do not consume the marker: the first real
+// occurrence belongs to the first day the strategy actually runs, not to a
+// day it never saw.
+func (e *Engine) markPeriodFlags(day market.Day) {
+	e.firstOfMonth, e.firstOfWeek, e.firstOfYear = false, false, false
+	if day < e.spec.Start {
+		return
+	}
+	t := day.Time()
+	monthKey := fmt.Sprintf("%d-%02d", t.Year(), int(t.Month()))
+	y, w := t.ISOWeek()
+	weekKey := fmt.Sprintf("%d-W%02d", y, w)
+	yearKey := fmt.Sprintf("%d", t.Year())
+
+	if !e.monthSeen[monthKey] {
+		e.monthSeen[monthKey] = true
+		e.firstOfMonth = true
+	}
+	if !e.weekSeen[weekKey] {
+		e.weekSeen[weekKey] = true
+		e.firstOfWeek = true
+	}
+	if !e.yearSeen[yearKey] {
+		e.yearSeen[yearKey] = true
+		e.firstOfYear = true
+	}
+}
+
+// hookError records a failure in a lifecycle hook.
+//
+// Counted alongside onDay errors rather than separately: from the reader's
+// point of view a session where a hook threw is a session where the strategy
+// did not fully run, whichever function it was.
+func (e *Engine) hookError(res *Result, hook string, day market.Day, err error) {
+	res.StrategyErrors++
+	e.warn(fmt.Sprintf("%s error on %s: %s", hook, day, truncateErr(err.Error())))
 }
 
 // recordAI files one model or search exchange against the current day and

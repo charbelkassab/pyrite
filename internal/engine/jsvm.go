@@ -19,11 +19,19 @@ import (
 // ways a strategy can reach the outside world are ctx.ai(), ctx.web() and
 // ctx.news(), all of which are counted, capped and recorded.
 type strategyVM struct {
-	e       *Engine
-	rt      *goja.Runtime
-	onDay   goja.Callable
-	setup   goja.Callable
-	ctxObj  *goja.Object
+	e      *Engine
+	rt     *goja.Runtime
+	onDay  goja.Callable
+	setup  goja.Callable
+	ctxObj *goja.Object
+	// Optional lifecycle hooks. onFill and onStop close the one real gap in
+	// the single-hook design: both fire during the engine's execution phase,
+	// before onDay runs, so a strategy reacting to its own fills otherwise
+	// has to re-derive from position state what the engine already knew.
+	onFill  goja.Callable
+	onStop  goja.Callable
+	onWeek  goja.Callable
+	onMonth goja.Callable
 	rng     *rand.Rand
 	stopped chan struct{}
 }
@@ -75,7 +83,73 @@ func newStrategyVM(e *Engine) (*strategyVM, error) {
 			vm.setup = cb
 		}
 	}
+	vm.onFill = optionalHook(rt, "onFill")
+	vm.onStop = optionalHook(rt, "onStop")
+	vm.onWeek = optionalHook(rt, "onWeek")
+	vm.onMonth = optionalHook(rt, "onMonth")
 	return vm, nil
+}
+
+// optionalHook resolves a named global to a callable, or nil.
+func optionalHook(rt *goja.Runtime, name string) goja.Callable {
+	v := rt.Get(name)
+	if v == nil || goja.IsUndefined(v) || goja.IsNull(v) {
+		return nil
+	}
+	cb, ok := goja.AssertFunction(v)
+	if !ok {
+		return nil
+	}
+	return cb
+}
+
+// callFillHook runs onFill or onStop for one execution.
+//
+// A hook that throws is recorded and the run continues, exactly as onDay is
+// treated: one bad edge case should cost that callback, not the backtest.
+func (v *strategyVM) callFillHook(cb goja.Callable, f Fill) error {
+	if cb == nil {
+		return nil
+	}
+	done := v.armInterrupt(30 * time.Second)
+	defer close(done)
+
+	obj := v.rt.NewObject()
+	_ = obj.Set("date", string(f.Date))
+	_ = obj.Set("symbol", f.Symbol)
+	_ = obj.Set("side", string(f.Side))
+	_ = obj.Set("shares", f.Shares)
+	_ = obj.Set("price", f.Price)
+	_ = obj.Set("value", f.Value)
+	_ = obj.Set("commission", f.Commission)
+	_ = obj.Set("slippage", f.Slippage)
+	_ = obj.Set("realizedPnl", f.RealizedPnL)
+	_ = obj.Set("reason", f.Reason)
+	_ = obj.Set("tag", f.Tag)
+
+	_, err := cb(goja.Undefined(), v.ctxObj, obj)
+	if err != nil {
+		if ex, ok := err.(*goja.Exception); ok {
+			return fmt.Errorf("%s", strings.TrimSpace(ex.String()))
+		}
+	}
+	return err
+}
+
+// callPeriodHook runs onWeek or onMonth.
+func (v *strategyVM) callPeriodHook(cb goja.Callable) error {
+	if cb == nil {
+		return nil
+	}
+	done := v.armInterrupt(60 * time.Second)
+	defer close(done)
+	_, err := cb(goja.Undefined(), v.ctxObj)
+	if err != nil {
+		if ex, ok := err.(*goja.Exception); ok {
+			return fmt.Errorf("%s", strings.TrimSpace(ex.String()))
+		}
+	}
+	return err
 }
 
 func (v *strategyVM) Close() { close(v.stopped) }
@@ -1292,34 +1366,23 @@ func (e *Engine) appendLog(msg string) {
 	}
 }
 
-// isFirstOfPeriod reports the first trading day seen in each month, week or
-// year, using memo maps so repeated calls in one day agree.
+// isFirstOfPeriod reports whether today is the first trading session of the
+// month, week or year.
+//
+// It reads flags the engine computed once at the top of the session rather
+// than deciding here. The previous design memoised on first call and answered
+// false thereafter, which was fine while onDay was the only caller and became
+// a trap the moment a lifecycle hook needed the same answer earlier in the
+// same session.
 func (e *Engine) isFirstOfPeriod(period string) bool {
-	t := e.today.Time()
-	var key string
-	var seen map[string]bool
 	switch period {
 	case "month":
-		key = fmt.Sprintf("%d-%02d", t.Year(), int(t.Month()))
-		seen = e.monthSeen
+		return e.firstOfMonth
 	case "week":
-		y, w := t.ISOWeek()
-		key = fmt.Sprintf("%d-W%02d", y, w)
-		seen = e.weekSeen
+		return e.firstOfWeek
 	default:
-		key = fmt.Sprintf("%d", t.Year())
-		seen = e.yearSeen
+		return e.firstOfYear
 	}
-	if seen[key] {
-		return false
-	}
-	// Only mark as consumed once trading has begun, so warm-up days do not
-	// swallow the first real occurrence.
-	if e.today >= e.spec.Start {
-		seen[key] = true
-		return true
-	}
-	return false
 }
 
 // ---- small conversion helpers -------------------------------------------
