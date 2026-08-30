@@ -350,7 +350,7 @@ func RunSweep(ctx context.Context, ss SweepSpec, store *market.Store, progress S
 				sharpes = append(sharpes, float64(row.Sharpe))
 			}
 		}
-		res.Robustness.AddDeflatedSharpe(res.Best[0].Curve, sharpes)
+		res.Robustness.AddDeflatedSharpe(res.Best[0].Curve, sharpes, ScaleFor(ss.Base.Interval, ss.Base.RiskFreeRate))
 	}
 	// The verdict is written last, once every statistic that feeds it exists.
 	res.Robustness.Finish(ss.Objective)

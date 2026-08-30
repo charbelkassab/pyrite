@@ -40,7 +40,7 @@ func TestTotalReturnAndCAGR(t *testing.T) {
 		{Date: "2020-01-02", Value: 100},
 		{Date: "2021-01-01", Value: 200},
 	}
-	m := ComputeMetrics(curve, 0)
+	m := ComputeMetrics(curve, DailyScale(0))
 
 	if math.Abs(m.TotalReturn-1.0) > 1e-9 {
 		t.Errorf("total return: got %v, want 1.0", m.TotalReturn)
@@ -59,7 +59,7 @@ func TestCAGRAnnualisesMultiYearReturns(t *testing.T) {
 		{Date: "2020-01-02", Value: 100},
 		{Date: "2024-01-02", Value: 400},
 	}
-	m := ComputeMetrics(curve, 0)
+	m := ComputeMetrics(curve, DailyScale(0))
 	want := math.Pow(4, 1.0/4.0) - 1 // ≈ 0.4142
 	if math.Abs(m.CAGR-want) > 0.01 {
 		t.Errorf("CAGR: got %v, want about %v", m.CAGR, want)
@@ -69,7 +69,7 @@ func TestCAGRAnnualisesMultiYearReturns(t *testing.T) {
 func TestMaxDrawdownMeasuresPeakToTrough(t *testing.T) {
 	// Rise to 120, fall to 60 (a 50% drawdown), then partially recover.
 	curve := curveFrom("2024-01-01", 100, 110, 120, 90, 60, 80, 100)
-	m := ComputeMetrics(curve, 0)
+	m := ComputeMetrics(curve, DailyScale(0))
 
 	if math.Abs(m.MaxDrawdown-(-0.5)) > 1e-9 {
 		t.Errorf("max drawdown: got %v, want -0.5", m.MaxDrawdown)
@@ -84,7 +84,7 @@ func TestMaxDrawdownMeasuresPeakToTrough(t *testing.T) {
 
 func TestFlatCurveHasNoRiskAndNoReturn(t *testing.T) {
 	curve := curveFrom("2024-01-01", 100, 100, 100, 100, 100)
-	m := ComputeMetrics(curve, 0)
+	m := ComputeMetrics(curve, DailyScale(0))
 
 	if m.TotalReturn != 0 {
 		t.Errorf("total return should be 0, got %v", m.TotalReturn)
@@ -102,10 +102,10 @@ func TestFlatCurveHasNoRiskAndNoReturn(t *testing.T) {
 }
 
 func TestEmptyAndSingletonCurvesDoNotPanic(t *testing.T) {
-	if m := ComputeMetrics(nil, 0); m.TradingDays != 0 {
+	if m := ComputeMetrics(nil, DailyScale(0)); m.TradingDays != 0 {
 		t.Errorf("an empty curve should yield zeroed metrics, got %+v", m)
 	}
-	m := ComputeMetrics([]EquityPoint{{Date: "2024-01-02", Value: 100}}, 0)
+	m := ComputeMetrics([]EquityPoint{{Date: "2024-01-02", Value: 100}}, DailyScale(0))
 	if m.TradingDays != 1 || m.TotalReturn != 0 {
 		t.Errorf("single point: got %d days, return %v", m.TradingDays, m.TotalReturn)
 	}
@@ -116,7 +116,7 @@ func TestSortinoIsUndefinedRatherThanZeroWithNoLosingDays(t *testing.T) {
 	// mathematically undefined. Reporting it as 0 would read as the worst
 	// possible score for what is actually the best possible case.
 	curve := curveFrom("2024-01-01", 100, 104, 108, 115, 121, 130)
-	m := ComputeMetrics(curve, 0)
+	m := ComputeMetrics(curve, DailyScale(0))
 
 	if m.Sortino.Defined() {
 		t.Errorf("Sortino should be undefined with no losing days, got %v", float64(m.Sortino))
@@ -198,8 +198,8 @@ func TestBenchmarkStatsAlignOnDate(t *testing.T) {
 		{Date: "2024-01-08", Value: 102},
 		{Date: "2024-01-09", Value: 105},
 	}
-	m := ComputeMetrics(strat, 0)
-	m.AddBenchmarkStats(strat, bench, 0)
+	m := ComputeMetrics(strat, DailyScale(0))
+	m.AddBenchmarkStats(strat, bench, DailyScale(0))
 
 	if !m.BetaVsBenchmark.Defined() {
 		t.Error("beta should be computable from the three shared dates")

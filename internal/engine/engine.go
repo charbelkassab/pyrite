@@ -37,6 +37,14 @@ type Spec struct {
 	Universe   []string `json:"universe"`
 	Benchmarks []string `json:"benchmarks,omitempty"`
 
+	// Interval is the bar size. Empty means daily.
+	//
+	// It decides more than how much data is loaded: every annualised
+	// statistic scales by the number of bars in a year, so a Sharpe computed
+	// on 1-minute bars and annualised as daily is out by about twentyfold,
+	// in the flattering direction.
+	Interval market.Interval `json:"interval,omitempty"`
+
 	Start market.Day `json:"start"`
 	End   market.Day `json:"end"`
 
@@ -94,6 +102,9 @@ func (s *Spec) ApplyDefaults() {
 	}
 	if s.Costs == (Costs{}) {
 		s.Costs = DefaultCosts()
+	}
+	if s.Interval == "" || !s.Interval.Valid() {
+		s.Interval = market.DefaultInterval
 	}
 }
 
@@ -398,7 +409,7 @@ func (e *Engine) Run(ctx context.Context) (*Result, error) {
 		}
 
 		// 2. Financing and trailing marks.
-		e.portfolio.AccrueFinancing(e.adjPrices, TradingDaysPerYear)
+		e.portfolio.AccrueFinancing(e.adjPrices, e.scale().Periods())
 		e.portfolio.UpdateTrailing(e.adjPrices)
 
 		// 3. Ask the strategy what to do, unless we are still warming up.
@@ -500,7 +511,7 @@ func (e *Engine) Run(ctx context.Context) (*Result, error) {
 		}
 	}
 
-	res.Metrics = ComputeMetrics(res.Curve, e.spec.RiskFreeRate)
+	res.Metrics = ComputeMetrics(res.Curve, e.scale())
 	res.Metrics.AddTradeStats(res.Fills, avgEquity(res.Curve))
 	res.AICallCount = e.aiCalls
 	res.Warnings = e.warnings
@@ -522,7 +533,7 @@ func (e *Engine) Run(ctx context.Context) (*Result, error) {
 		if len(curve) == 0 {
 			continue
 		}
-		bm := ComputeMetrics(curve, e.spec.RiskFreeRate)
+		bm := ComputeMetrics(curve, e.scale())
 		label := ser.Name
 		if label == "" {
 			label = sym
@@ -534,19 +545,25 @@ func (e *Engine) Run(ctx context.Context) (*Result, error) {
 	var benchCurve []EquityPoint
 	if len(res.Benchmarks) > 0 {
 		benchCurve = res.Benchmarks[0].Curve
-		res.Metrics.AddBenchmarkStats(res.Curve, benchCurve, e.spec.RiskFreeRate)
+		res.Metrics.AddBenchmarkStats(res.Curve, benchCurve, e.scale())
 	}
 
 	res.Trades = BuildTrades(res.Fills, e.series)
 	res.TradeStats = ComputeTradeStats(res.Trades)
-	res.Risk = ComputeRiskMetrics(res.Curve, res.Metrics.CAGR, e.spec.RiskFreeRate)
+	res.Risk = ComputeRiskMetrics(res.Curve, res.Metrics.CAGR, e.scale())
 	if benchCurve != nil {
 		res.Risk.AddCapture(res.Curve, benchCurve)
 	}
-	res.Attribution = ComputeAttribution(res.Curve, res.Trades, benchCurve, e.spec.RiskFreeRate)
+	res.Attribution = ComputeAttribution(res.Curve, res.Trades, benchCurve, e.scale())
 	// Half a trading year: long enough for the statistic to mean something,
-	// short enough to show a regime change while it is happening.
-	res.Rolling = RollingStats(res.Curve, benchCurve, 126, e.spec.RiskFreeRate)
+	// short enough to show a regime change while it is happening. On
+	// intraday bars that is a lot of bars, so it is capped at a fifth of the
+	// run rather than swallowing it whole.
+	window := int(e.scale().Periods() / 2)
+	if max := len(res.Curve) / 5; window > max {
+		window = max
+	}
+	res.Rolling = RollingStats(res.Curve, benchCurve, window, e.scale())
 	res.Manifest = e.buildManifest(res)
 	res.Params = e.paramDecls
 	res.ParamValues = e.activeParams()
@@ -557,6 +574,11 @@ func (e *Engine) Run(ctx context.Context) (*Result, error) {
 	res.Critique = Criticise(res)
 	res.Elapsed = time.Since(started).Milliseconds()
 	return res, nil
+}
+
+// scale is how this run converts per-bar statistics into annual ones.
+func (e *Engine) scale() Scale {
+	return ScaleFor(e.spec.Interval, e.spec.RiskFreeRate)
 }
 
 // activeParams reports the value in force for every declared parameter.
@@ -625,7 +647,7 @@ func (e *Engine) markPeriodFlags(day market.Day) {
 	if day < e.spec.Start {
 		return
 	}
-	t := day.Time()
+	t := day.Date().Time()
 	monthKey := fmt.Sprintf("%d-%02d", t.Year(), int(t.Month()))
 	y, w := t.ISOWeek()
 	weekKey := fmt.Sprintf("%d-W%02d", y, w)
@@ -721,12 +743,21 @@ func (e *Engine) loadData(ctx context.Context) error {
 	fullHistory := e.spec.Start == ""
 	loadFrom := market.Day(earliestPossible)
 	if !fullHistory {
-		// Convert trading-day warmup into calendar days with slack for
-		// weekends and holidays.
-		loadFrom = e.spec.Start.Add(-(warmupDays*7/5 + 20))
+		if e.spec.Interval.Intraday() {
+			// Warm-up is counted in bars. At intraday sizes that is a
+			// fraction of a session, so converting through calendar days
+			// the way the daily path does would ask for far too little.
+			perSession := e.spec.Interval.PeriodsPerYear() / TradingDaysPerYear
+			sessions := int(float64(warmupDays)/math.Max(perSession, 1)) + 2
+			loadFrom = e.spec.Start.Date().Add(-(sessions*7/5 + 5))
+		} else {
+			// Convert trading-day warmup into calendar days with slack for
+			// weekends and holidays.
+			loadFrom = e.spec.Start.Add(-(warmupDays*7/5 + 20))
+		}
 	}
 
-	series, errs := e.store.GetMany(ctx, symbols, loadFrom, e.spec.End)
+	series, errs := e.store.GetManyInterval(ctx, symbols, loadFrom, e.spec.End.EndOfDay(), e.spec.Interval)
 	if len(series) == 0 {
 		var first string
 		for _, err := range errs {
@@ -743,7 +774,7 @@ func (e *Engine) loadData(ctx context.Context) error {
 	// Benchmarks are loaded separately so a bad benchmark cannot break a run.
 	e.benchSer = map[string]*market.Series{}
 	if len(e.spec.Benchmarks) > 0 {
-		bs, berrs := e.store.GetMany(ctx, e.spec.Benchmarks, loadFrom, e.spec.End)
+		bs, berrs := e.store.GetManyInterval(ctx, e.spec.Benchmarks, loadFrom, e.spec.End.EndOfDay(), e.spec.Interval)
 		e.benchSer = bs
 		for sym, err := range berrs {
 			e.warn(fmt.Sprintf("benchmark %s unavailable: %s", sym, truncateErr(err.Error())))

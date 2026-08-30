@@ -62,6 +62,7 @@ Common flags:
                 point-in-time index membership
   --code-file   run a strategy you already have, skipping the compiler
   --impact      market impact coefficient; 1 is the usual estimate
+  --interval    bar size: 1m, 5m, 15m, 30m, 1h, 1d, 1wk, 1mo   (default 1d)
   --offline     use synthetic data, no network, no keys
   --json        print machine readable output
 
@@ -221,6 +222,8 @@ func cmdRun(args []string) error {
 	costScan := fs.Bool("cost-scan", false, "also re-run at 0, 5, 20 and 50 bps of slippage")
 	impact := fs.Float64("impact", 0,
 		"market impact coefficient; 1 is the usual estimate, 0 disables the model")
+	interval := fs.String("interval", "1d",
+		"bar size: "+strings.Join(market.IntervalNames(), ", "))
 	warmupFlag := fs.Int("warmup", 0, "bars of history to load before the start date")
 	// Separate the prompt from the flags before parsing. Go's flag package
 	// stops at the first positional argument, so without this a command like
@@ -348,6 +351,15 @@ func cmdRun(args []string) error {
 		spec.Warmup = *warmupFlag
 	}
 	spec.Costs.ImpactCoefficient = *impact
+	iv, err := market.ParseInterval(*interval)
+	if err != nil {
+		return err
+	}
+	if !a.Store.SupportsInterval(iv) {
+		return fmt.Errorf("the configured data provider serves daily bars only, so %s is unavailable.\n"+
+			"  Yahoo serves intraday: set PYRITE_DATA_PROVIDERS=yahoo", iv)
+	}
+	spec.Interval = iv
 	lastPct := -1
 	opts.Progress = func(done, total int, day market.Day) {
 		pct := done * 100 / total
@@ -409,8 +421,12 @@ func printReport(plan *strategy.Plan, res *engine.Result) {
 	if plan.Description != "" {
 		fmt.Printf("%s\n", wrap(plan.Description, 76))
 	}
-	fmt.Printf("\n%s to %s   %d trading days   universe of %d\n\n",
-		res.Spec.Start, res.Spec.End, m.TradingDays, len(res.Spec.Universe))
+	unit := "trading days"
+	if res.Spec.Interval.Intraday() {
+		unit = string(res.Spec.Interval) + " bars"
+	}
+	fmt.Printf("\n%s to %s   %d %s   universe of %d\n\n",
+		res.Spec.Start, res.Spec.End, m.TradingDays, unit, len(res.Spec.Universe))
 
 	fmt.Printf("  %-22s %14s\n", "Starting capital", money(m.StartValue))
 	fmt.Printf("  %-22s %14s\n", "Final value", money(m.EndValue))

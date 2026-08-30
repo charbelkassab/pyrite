@@ -394,7 +394,7 @@ func (v *strategyVM) installContext() error {
 	set("lowest", func(sym string, n int) any { return nanToNull(Lowest(e.closes(sym, n+1), defInt(n, 20))) })
 	set("volatility", func(sym string, n int) any {
 		n = defInt(n, 20)
-		return nanToNull(Volatility(e.closes(sym, n+2), n, TradingDaysPerYear))
+		return nanToNull(Volatility(e.closes(sym, n+2), n, e.scale().Periods()))
 	})
 	set("drawdown", func(sym string, n int) any { return nanToNull(Drawdown(e.closes(sym, defInt(n, 252)), defInt(n, 252))) })
 	set("macd", func(sym string, fast, slow, signal int) any {
@@ -579,6 +579,7 @@ func (v *strategyVM) installContext() error {
 			}
 		}
 		opts.RiskFree = e.spec.RiskFreeRate
+		opts.PeriodsPerYear = e.scale().Periods()
 
 		// Only symbols with a full window contribute. A name that listed
 		// halfway through the lookback has no comparable covariance, and
@@ -603,6 +604,50 @@ func (v *strategyVM) installContext() error {
 			out[sym] = w[i]
 		}
 		return rt.ToValue(out)
+	})
+
+	// ---- Multiple timeframes --------------------------------------------
+
+	// resample(sym, tf, n) returns the last n bars aggregated to a coarser
+	// size, so a run on 5-minute bars can read a daily trend.
+	//
+	//   const daily = ctx.resample("SPY", "1d", 200);
+	//   const closes = daily.map(b => b.close);
+	set("resample", func(sym, tf string, n int) any {
+		iv, err := market.ParseInterval(tf)
+		if err != nil {
+			panic(rt.NewTypeError(err.Error()))
+		}
+		bars := e.resampleBars(sym, iv, defInt(n, 50))
+		if len(bars) == 0 {
+			return nil
+		}
+		out := make([]map[string]any, 0, len(bars))
+		for _, b := range bars {
+			out = append(out, map[string]any{
+				"date": string(b.Date), "open": b.Open, "high": b.High,
+				"low": b.Low, "close": b.AdjClose, "rawClose": b.Close,
+				"volume": b.Volume,
+			})
+		}
+		return out
+	})
+
+	// resampledCloses(sym, tf, n) is the common case of the above.
+	set("resampledCloses", func(sym, tf string, n int) any {
+		iv, err := market.ParseInterval(tf)
+		if err != nil {
+			panic(rt.NewTypeError(err.Error()))
+		}
+		bars := e.resampleBars(sym, iv, defInt(n, 50))
+		if len(bars) == 0 {
+			return nil
+		}
+		out := make([]float64, 0, len(bars))
+		for _, b := range bars {
+			out = append(out, b.AdjClose)
+		}
+		return out
 	})
 
 	// ---- Economic data --------------------------------------------------
@@ -1091,7 +1136,7 @@ func (v *strategyVM) rankUniverse(call goja.FunctionCall) []string {
 			case "momentum", "return", "performance", "ret":
 				f = Momentum(e.closes(s, window+2), window)
 			case "volatility", "vol":
-				f = Volatility(e.closes(s, window+2), window, TradingDaysPerYear)
+				f = Volatility(e.closes(s, window+2), window, e.scale().Periods())
 			case "rsi":
 				f = RSI(e.closes(s, window*4+5), window)
 			case "volume", "dollarvolume":
@@ -1272,6 +1317,47 @@ func (e *Engine) fredValueOn(id string, day market.Day) float64 {
 		return math.NaN()
 	}
 	return v
+}
+
+// resampleBars aggregates a symbol's history up to a coarser bar size,
+// returning at most n bars ending at the current session.
+//
+// Nothing after the simulated moment is included, which is the only thing
+// that makes this safe: a strategy asking for "today's daily bar" from inside
+// a 5-minute run gets the bar as it stands so far, not as it will close.
+func (e *Engine) resampleBars(sym string, iv market.Interval, n int) []market.Bar {
+	if n <= 0 {
+		n = 50
+	}
+	s, ok := e.series[market.NormalizeSymbol(sym)]
+	if !ok || s == nil {
+		return nil
+	}
+	if !iv.Coarser(e.spec.Interval) {
+		// Asking for the run's own size, or finer, is not resampling. The
+		// finer case would mean inventing prices.
+		return s.History(e.today, n)
+	}
+
+	// Take enough fine bars to build n coarse ones, with slack for partial
+	// buckets at each end.
+	perCoarse := 1.0
+	if fine := e.spec.Interval.PeriodsPerYear(); fine > 0 {
+		perCoarse = fine / iv.PeriodsPerYear()
+	}
+	need := int(float64(n+2)*math.Max(perCoarse, 1)) + 2
+	fine := s.History(e.today, need)
+	if len(fine) == 0 {
+		return nil
+	}
+	coarse := market.Resample(market.NewSeries(s.Symbol, fine), iv)
+	if coarse == nil || len(coarse.Bars) == 0 {
+		return nil
+	}
+	if len(coarse.Bars) > n {
+		return coarse.Bars[len(coarse.Bars)-n:]
+	}
+	return coarse.Bars
 }
 
 // ohlcv is ohlc plus volume, for the flow indicators.

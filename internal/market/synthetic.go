@@ -192,3 +192,70 @@ func isSyntheticHoliday(d Day) bool {
 }
 
 func round2(v float64) float64 { return math.Round(v*100) / 100 }
+
+// SupportedIntervals: the generator can produce any size, because it is
+// producing the bars rather than fetching them. That matters for more than
+// demos — it is what lets the intraday path be tested with no network.
+func (s *SyntheticProvider) SupportedIntervals() []Interval {
+	out := make([]Interval, 0, 8)
+	for _, n := range IntervalNames() {
+		out = append(out, Interval(n))
+	}
+	return out
+}
+
+// FetchInterval generates bars at the requested size.
+//
+// Intraday bars are built by subdividing the day's range rather than by
+// running the daily generator faster, so the day's open, high, low and close
+// still agree with what Fetch would return for the same date. A backtest that
+// switches bar size should be looking at the same market.
+func (s *SyntheticProvider) FetchInterval(ctx context.Context, symbol string, from, to Day, iv Interval) (*Series, error) {
+	if iv == "" || !iv.Intraday() {
+		return s.Fetch(ctx, symbol, from, to)
+	}
+	daily, err := s.Fetch(ctx, symbol, from, to)
+	if err != nil {
+		return nil, err
+	}
+
+	perSession := int(iv.PeriodsPerYear() / tradingSessionsPerYear)
+	if perSession < 1 {
+		perSession = 1
+	}
+	// The US regular session, in UTC, which is what NewStamp records.
+	const openHour, openMinute = 14, 30
+
+	bars := make([]Bar, 0, len(daily.Bars)*perSession)
+	for _, d := range daily.Bars {
+		day := d.Date.Date().Time()
+		prev := d.Open
+		for i := 0; i < perSession; i++ {
+			t := day.Add(time.Duration(openHour)*time.Hour +
+				time.Duration(openMinute)*time.Minute +
+				time.Duration(i)*iv.Duration())
+
+			// Walk from the day's open to its close in equal steps, with the
+			// extremes placed on real bars so the session's high and low
+			// survive the subdivision.
+			frac := float64(i+1) / float64(perSession)
+			close := d.Open + (d.Close-d.Open)*frac
+			high, low := math.Max(prev, close), math.Min(prev, close)
+			if i == perSession/3 {
+				high = math.Max(high, d.High)
+			}
+			if i == perSession*2/3 {
+				low = math.Min(low, d.Low)
+			}
+			bars = append(bars, Bar{
+				Date: NewStamp(t), Open: prev, High: high, Low: low,
+				Close: close, AdjClose: close,
+				Volume: d.Volume / float64(perSession),
+			})
+			prev = close
+		}
+	}
+	out := NewSeries(NormalizeSymbol(symbol), bars)
+	out.Name = daily.Name
+	return out, nil
+}

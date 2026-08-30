@@ -8,9 +8,6 @@ import (
 	"github.com/charbelkassab/pyrite/internal/market"
 )
 
-// TradingDaysPerYear is the annualisation factor for daily data.
-const TradingDaysPerYear = 252.0
-
 // Ratio is a metric that may legitimately be undefined — a Sortino ratio with
 // no losing days, a profit factor with no losing trades, a beta against a
 // benchmark that never moved.
@@ -123,7 +120,7 @@ type EquityPoint struct {
 }
 
 // ComputeMetrics derives statistics from an equity curve.
-func ComputeMetrics(curve []EquityPoint, riskFreeRate float64) Metrics {
+func ComputeMetrics(curve []EquityPoint, sc Scale) Metrics {
 	// Ratios start undefined. Their zero value would otherwise claim a real
 	// score of zero for a statistic that was never computed.
 	nan := Ratio(math.NaN())
@@ -175,7 +172,7 @@ func ComputeMetrics(curve []EquityPoint, riskFreeRate float64) Metrics {
 	if len(rets) > 1 {
 		sd := Stdev(rets, len(rets))
 		if !math.IsNaN(sd) {
-			m.Volatility = sd * math.Sqrt(TradingDaysPerYear)
+			m.Volatility = sc.Vol(sd)
 		}
 		mean := 0.0
 		for _, r := range rets {
@@ -183,17 +180,17 @@ func ComputeMetrics(curve []EquityPoint, riskFreeRate float64) Metrics {
 		}
 		mean /= float64(len(rets))
 
-		rfDaily := riskFreeRate / TradingDaysPerYear
+		rfPeriod := sc.PerPeriodRF()
 		if sd > 0 {
-			m.Sharpe = Ratio((mean - rfDaily) / sd * math.Sqrt(TradingDaysPerYear))
+			m.Sharpe = Ratio(sc.Sharpe(mean, sd))
 		}
 
 		// Sortino: deviation of returns below the risk-free rate only.
 		var downSS float64
 		var downN int
 		for _, r := range rets {
-			if r < rfDaily {
-				d := r - rfDaily
+			if r < rfPeriod {
+				d := r - rfPeriod
 				downSS += d * d
 				downN++
 			}
@@ -201,7 +198,7 @@ func ComputeMetrics(curve []EquityPoint, riskFreeRate float64) Metrics {
 		if downN > 0 {
 			dd := math.Sqrt(downSS / float64(downN))
 			if dd > 0 {
-				m.Sortino = Ratio((mean - rfDaily) / dd * math.Sqrt(TradingDaysPerYear))
+				m.Sortino = Ratio(sc.Sharpe(mean, dd))
 			}
 		}
 	}
@@ -288,7 +285,7 @@ func (m *Metrics) AddTradeStats(fills []Fill, avgEquity float64) {
 
 // AddBenchmarkStats computes benchmark-relative statistics. The two curves are
 // aligned on date; days present in only one are skipped.
-func (m *Metrics) AddBenchmarkStats(strategy, benchmark []EquityPoint, riskFreeRate float64) {
+func (m *Metrics) AddBenchmarkStats(strategy, benchmark []EquityPoint, sc Scale) {
 	sr, br := alignedReturns(strategy, benchmark)
 	if len(sr) < 3 {
 		return
@@ -302,14 +299,14 @@ func (m *Metrics) AddBenchmarkStats(strategy, benchmark []EquityPoint, riskFreeR
 	}
 	te := Stdev(diff, len(diff))
 	if !math.IsNaN(te) {
-		m.TrackingError = te * math.Sqrt(TradingDaysPerYear)
+		m.TrackingError = sc.Vol(te)
 		var mean float64
 		for _, d := range diff {
 			mean += d
 		}
 		mean /= float64(len(diff))
 		if te > 0 {
-			m.InformationRatio = Ratio(mean / te * math.Sqrt(TradingDaysPerYear))
+			m.InformationRatio = Ratio(mean / te * sc.Root())
 		}
 	}
 
@@ -322,8 +319,8 @@ func (m *Metrics) AddBenchmarkStats(strategy, benchmark []EquityPoint, riskFreeR
 		}
 		ms /= float64(len(sr))
 		mb /= float64(len(br))
-		rf := riskFreeRate / TradingDaysPerYear
-		m.Alpha = Ratio(((ms - rf) - float64(m.BetaVsBenchmark)*(mb-rf)) * TradingDaysPerYear)
+		rf := sc.PerPeriodRF()
+		m.Alpha = Ratio(sc.Annualise((ms - rf) - float64(m.BetaVsBenchmark)*(mb-rf)))
 	}
 }
 

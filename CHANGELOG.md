@@ -36,6 +36,19 @@ the CLI flags may all move.
 - **Cost sensitivity.** `--cost-scan` re-runs at 0, 5, 20 and 50 bps and
   interpolates the break-even.
 
+### Bar sizes
+
+- **Intraday.** `--interval` runs a backtest on 1m, 5m, 15m, 30m, 1h, 1wk or
+  1mo bars. Every annualised statistic scales with the bar size: a Sharpe
+  computed on 1-minute bars and annualised as daily is out by about twentyfold,
+  in the flattering direction, so the annualisation factor travels as a typed
+  `Scale` rather than two swappable float64 parameters.
+- **Multiple timeframes.** `ctx.resampledCloses(sym, "1d", n)` gives a daily
+  view from inside an intraday run, including only what had happened by the
+  simulated moment.
+- Vendor history limits are clamped and reported rather than silently returning
+  a shorter series than asked for.
+
 ### Honest data
 
 - **Point-in-time S&P 500 membership.** `ctx.universe("sp500")` resolves per

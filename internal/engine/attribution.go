@@ -76,7 +76,7 @@ type Attribution struct {
 }
 
 // ComputeAttribution builds the full decomposition. benchmark may be nil.
-func ComputeAttribution(curve []EquityPoint, trades []Trade, benchmark []EquityPoint, riskFreeRate float64) Attribution {
+func ComputeAttribution(curve []EquityPoint, trades []Trade, benchmark []EquityPoint, sc Scale) Attribution {
 	var a Attribution
 	if len(curve) < 2 {
 		return a
@@ -86,14 +86,14 @@ func ComputeAttribution(curve []EquityPoint, trades []Trade, benchmark []EquityP
 		benchByDay[p.Date] = p.Value
 	}
 
-	a.ByYear = slicePeriods(curve, trades, benchByDay, riskFreeRate, func(d market.Day) string {
-		return string(d)[:4]
+	a.ByYear = slicePeriods(curve, trades, benchByDay, sc, func(d market.Day) string {
+		return string(d.Date())[:4]
 	})
-	a.ByMonth = slicePeriods(curve, trades, benchByDay, riskFreeRate, func(d market.Day) string {
-		return string(d)[:7]
+	a.ByMonth = slicePeriods(curve, trades, benchByDay, sc, func(d market.Day) string {
+		return string(d.Date())[:7]
 	})
-	a.ByMonthOfYear = seasonalMonths(curve)
-	a.ByRegime = regimePeriods(curve, trades, benchmark, riskFreeRate)
+	a.ByMonthOfYear = seasonalMonths(curve, sc)
+	a.ByRegime = regimePeriods(curve, trades, benchmark, sc)
 	a.BySymbol = symbolAttribution(trades)
 	a.Stress = stressTests(curve, a.ByMonth)
 	return a
@@ -105,7 +105,7 @@ func ComputeAttribution(curve []EquityPoint, trades []Trade, benchmark []EquityP
 // Returns are computed from the equity value at the boundary of the previous
 // group, not from the first value inside the group, so the first day's move is
 // not silently discarded from every period.
-func slicePeriods(curve []EquityPoint, trades []Trade, bench map[market.Day]float64, rf float64, key func(market.Day) string) []PeriodStats {
+func slicePeriods(curve []EquityPoint, trades []Trade, bench map[market.Day]float64, sc Scale, key func(market.Day) string) []PeriodStats {
 	if len(curve) == 0 {
 		return nil
 	}
@@ -137,7 +137,7 @@ func slicePeriods(curve []EquityPoint, trades []Trade, bench map[market.Day]floa
 			base = curve[g.startIdx-1].Value
 			baseDate = curve[g.startIdx-1].Date
 		}
-		ps := periodStats(g.label, seg, base, rf)
+		ps := periodStats(g.label, seg, base, sc)
 		if bv, ok := bench[baseDate]; ok && bv > 0 {
 			if ev, ok2 := bench[seg[len(seg)-1].Date]; ok2 && ev > 0 {
 				ps.BenchmarkReturn = ev/bv - 1
@@ -151,7 +151,7 @@ func slicePeriods(curve []EquityPoint, trades []Trade, bench map[market.Day]floa
 }
 
 // periodStats measures one contiguous slice against a starting value.
-func periodStats(label string, seg []EquityPoint, base, rf float64) PeriodStats {
+func periodStats(label string, seg []EquityPoint, base float64, sc Scale) PeriodStats {
 	ps := PeriodStats{
 		Label:       label,
 		Start:       seg[0].Date,
@@ -188,8 +188,8 @@ func periodStats(label string, seg []EquityPoint, base, rf float64) PeriodStats 
 	if len(rets) > 1 {
 		mean, sd := meanStdev(rets)
 		if sd > 0 {
-			ps.Volatility = sd * math.Sqrt(TradingDaysPerYear)
-			ps.Sharpe = Ratio((mean - rf/TradingDaysPerYear) / sd * math.Sqrt(TradingDaysPerYear))
+			ps.Volatility = sc.Vol(sd)
+			ps.Sharpe = Ratio(sc.Sharpe(mean, sd))
 		}
 	}
 	return ps
@@ -197,7 +197,7 @@ func periodStats(label string, seg []EquityPoint, base, rf float64) PeriodStats 
 
 // seasonalMonths aggregates every January together, every February together,
 // and so on — the calendar-effect view.
-func seasonalMonths(curve []EquityPoint) []PeriodStats {
+func seasonalMonths(curve []EquityPoint, sc Scale) []PeriodStats {
 	names := []string{"Jan", "Feb", "Mar", "Apr", "May", "Jun",
 		"Jul", "Aug", "Sep", "Oct", "Nov", "Dec"}
 	sums := make([][]float64, 12)
@@ -227,8 +227,8 @@ func seasonalMonths(curve []EquityPoint) []PeriodStats {
 		if len(rs) > 1 {
 			mean, sd := meanStdev(rs)
 			if sd > 0 {
-				ps.Volatility = sd * math.Sqrt(TradingDaysPerYear)
-				ps.Sharpe = Ratio(mean / sd * math.Sqrt(TradingDaysPerYear))
+				ps.Volatility = sc.Vol(sd)
+				ps.Sharpe = Ratio(mean / sd * sc.Root())
 			}
 		}
 		out = append(out, ps)
@@ -242,7 +242,7 @@ func seasonalMonths(curve []EquityPoint) []PeriodStats {
 // strategy's own curve otherwise. Using the benchmark is the meaningful choice:
 // "how does this behave when the market is falling" is a question about the
 // market, not about the strategy.
-func regimePeriods(curve []EquityPoint, trades []Trade, benchmark []EquityPoint, rf float64) []PeriodStats {
+func regimePeriods(curve []EquityPoint, trades []Trade, benchmark []EquityPoint, sc Scale) []PeriodStats {
 	ref := benchmark
 	if len(ref) < 60 {
 		ref = curve
@@ -273,7 +273,7 @@ func regimePeriods(curve []EquityPoint, trades []Trade, benchmark []EquityPoint,
 		}
 		if i >= volWindow {
 			_, sd := meanStdev(refRets[i-volWindow : i])
-			v := sd * math.Sqrt(TradingDaysPerYear)
+			v := sc.Vol(sd)
 			volAt[ref[i].Date] = v
 			vols = append(vols, v)
 		}
@@ -347,8 +347,8 @@ func regimePeriods(curve []EquityPoint, trades []Trade, benchmark []EquityPoint,
 		if len(rs) > 1 {
 			mean, sd := meanStdev(rs)
 			if sd > 0 {
-				ps.Volatility = sd * math.Sqrt(TradingDaysPerYear)
-				ps.Sharpe = Ratio((mean - rf/TradingDaysPerYear) / sd * math.Sqrt(TradingDaysPerYear))
+				ps.Volatility = sc.Vol(sd)
+				ps.Sharpe = Ratio(sc.Sharpe(mean, sd))
 			}
 		}
 		out = append(out, ps)

@@ -261,3 +261,117 @@ func truncate(s string, n int) string {
 	}
 	return s[:n] + "..."
 }
+
+// yahooIntradayWindows are how far back the endpoint actually serves each bar
+// size, in days.
+//
+// These are the vendor's limits, not ours, and they are the single most
+// important thing to know about intraday data here: a 1-minute backtest cannot
+// span more than about a month, whatever date range you ask for. Silently
+// returning a short series would produce a backtest over a period the user did
+// not choose, so the request is clamped and the clamp is reported.
+var yahooIntradayWindows = map[Interval]int{
+	Interval1m:  30,
+	Interval5m:  60,
+	Interval15m: 60,
+	Interval30m: 60,
+	Interval1h:  730,
+}
+
+// SupportedIntervals lists what this endpoint serves.
+func (y *YahooProvider) SupportedIntervals() []Interval {
+	return []Interval{Interval1m, Interval5m, Interval15m, Interval30m,
+		Interval1h, Interval1d, Interval1wk, Interval1mo}
+}
+
+// MaxHistoryDays reports how far back a bar size can be fetched, or 0 for no
+// practical limit.
+func (y *YahooProvider) MaxHistoryDays(iv Interval) int { return yahooIntradayWindows[iv] }
+
+// FetchInterval retrieves bars at a size other than daily.
+func (y *YahooProvider) FetchInterval(ctx context.Context, symbol string, from, to Day, iv Interval) (*Series, error) {
+	if iv == "" || iv == Interval1d {
+		return y.Fetch(ctx, symbol, from, to)
+	}
+	if !iv.Valid() {
+		return nil, fmt.Errorf("yahoo: unsupported bar size %q", iv)
+	}
+	symbol = NormalizeSymbol(symbol)
+	if to == "" {
+		to = NewDay(time.Now())
+	}
+
+	// Clamp to what the vendor will actually serve.
+	if window := yahooIntradayWindows[iv]; window > 0 {
+		earliest := to.Date().Add(-window + 1)
+		if from == "" || from < earliest {
+			from = earliest
+		}
+	}
+
+	p1 := from.Time().Unix()
+	p2 := to.EndOfDay().Time().Add(time.Minute).Unix()
+	if p1 < 0 {
+		p1 = 0
+	}
+
+	endpoint := fmt.Sprintf("%s/v8/finance/chart/%s?period1=%d&period2=%d&interval=%s&includePrePost=false",
+		y.BaseURL, url.PathEscape(symbol), p1, p2, url.QueryEscape(string(iv)))
+
+	body, err := y.get(ctx, endpoint)
+	if err != nil {
+		return nil, err
+	}
+	var resp yahooChartResponse
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return nil, fmt.Errorf("yahoo: decode %s at %s: %w", symbol, iv, err)
+	}
+	if resp.Chart.Error != nil {
+		if strings.Contains(strings.ToLower(resp.Chart.Error.Code), "notfound") {
+			return nil, fmt.Errorf("%w: %s", ErrNotFound, symbol)
+		}
+		return nil, fmt.Errorf("yahoo: %s at %s: %s", symbol, iv, resp.Chart.Error.Description)
+	}
+	if len(resp.Chart.Result) == 0 {
+		return nil, fmt.Errorf("%w: %s at %s", ErrNotFound, symbol, iv)
+	}
+
+	r := resp.Chart.Result[0]
+	if len(r.Indicators.Quote) == 0 {
+		return nil, fmt.Errorf("%w: %s at %s", ErrNotFound, symbol, iv)
+	}
+	q := r.Indicators.Quote[0]
+
+	bars := make([]Bar, 0, len(r.Timestamp))
+	for i, ts := range r.Timestamp {
+		c := at(q.Close, i)
+		if c == nil || math.IsNaN(*c) {
+			continue // a gap in the session, which the endpoint pads with nulls
+		}
+		// Intraday bars carry no adjusted close. Over a window of at most a
+		// couple of years the adjustment is a step at each split or dividend
+		// rather than a drift, and pretending otherwise would be worse than
+		// stating it: adjusted mirrors raw, so SplitFactor is 1 and nothing
+		// downstream silently misprices.
+		bars = append(bars, Bar{
+			Date:     NewStamp(time.Unix(ts, 0).UTC()),
+			Open:     deref(at(q.Open, i), *c),
+			High:     deref(at(q.High, i), *c),
+			Low:      deref(at(q.Low, i), *c),
+			Close:    *c,
+			AdjClose: *c,
+			Volume:   deref(at(q.Volume, i), 0),
+		})
+	}
+	if len(bars) == 0 {
+		return nil, fmt.Errorf("%w: %s at %s", ErrNotFound, symbol, iv)
+	}
+
+	name := r.Meta.LongName
+	if name == "" {
+		name = r.Meta.ShortName
+	}
+	ser := NewSeries(symbol, bars)
+	ser.Name = name
+	return ser, nil
+}

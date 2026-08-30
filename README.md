@@ -103,6 +103,14 @@ And then it says so in a sentence, on every run, without being asked.
 It is a single Go binary. No accounts, no signup, no telemetry, no cloud
 service, no database. It runs on your laptop and writes to `~/.pyrite`.
 
+Bar sizes run from one minute to one month (`--interval 5m`), and every
+annualised statistic scales with the bar size — a Sharpe computed on 1-minute
+bars and annualised as daily would be out by about twentyfold, flatteringly.
+A strategy can read a coarser timeframe from inside a finer run, so a daily
+trend filter with 5-minute entries is a few lines. Free intraday history is
+short, and [the limitations](docs/limitations.md#intraday-and-what-it-does-not-include)
+say exactly how short.
+
 ---
 
 ## Install
@@ -507,7 +515,7 @@ A 2019 backtest that reads the web is being handed 2026 information. `ctx.ai()` 
 a milder version of the same problem — the model knows what happened next. Treat
 these runs as demonstrations of a mechanism, never as evidence that an idea works.
 
-**Not modelled:** taxes, intraday prices and stops that trigger between bars,
+**Not modelled:** taxes, prices and stops that trigger between bars,
 options and futures, dividends as cash (they are reinvested via adjusted closes),
 market impact for large orders, borrow availability for shorts, delistings and
 spin-offs.

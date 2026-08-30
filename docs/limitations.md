@@ -3,6 +3,34 @@
 Every backtesting tool flatters its results. This page is the honest accounting
 of how, so that you can discount what you see by roughly the right amount.
 
+## Intraday, and what it does not include
+
+Bar sizes down to one minute work, and every annualised statistic scales with
+the bar size rather than assuming 252. Four things are worth knowing before
+drawing conclusions from an intraday run.
+
+**Vendor history is short.** Yahoo serves roughly 30 days of 1-minute bars,
+60 days of 5- to 30-minute bars, and 730 days of hourly. A request for more is
+clamped to what exists, so a 1-minute backtest covers about a month whatever
+date range you ask for. That is far too short to say anything about a strategy.
+Use `NQ_CSV_DIR`, or a paid vendor, for real intraday research.
+
+**Intraday bars carry no adjusted close.** Over a window of at most a couple of
+years the split and dividend adjustment is a step at each event rather than a
+drift, so adjusted mirrors raw and nothing silently misprices — but a symbol
+that split inside your window will show that split as a price gap.
+
+**Financing is charged per bar, so overnight is free.** Short borrow accrues
+across the bars a run actually steps through. An intraday run holds a short
+overnight without paying for it, which understates the cost of a position held
+across sessions.
+
+**The gap between sessions is invisible.** The engine fills at the next bar's
+open, and at the end of a session the next bar is the following morning. A
+strategy holding into the close is exposed to the overnight gap and the
+backtest models that correctly; a stop is not, because the engine checks stops
+against bar highs and lows and there are no bars overnight.
+
 ## What a parameter search does and does not tell you
 
 `pyrite sweep` exists because a single backtest is one point in a space,

@@ -47,6 +47,8 @@ type OptimizeOptions struct {
 	MaxWeight float64
 	// RiskFree is the annual rate used by the tangency portfolio.
 	RiskFree float64
+	// PeriodsPerYear converts that annual rate to one bar. Zero means daily.
+	PeriodsPerYear float64
 }
 
 // Optimize turns a matrix of aligned return series into weights.
@@ -90,7 +92,11 @@ func Optimize(returns [][]float64, opts OptimizeOptions) []float64 {
 	switch opts.Objective {
 	case ObjMaxSharpe:
 		excess := make([]float64, n)
-		rf := opts.RiskFree / TradingDaysPerYear
+		ppy := opts.PeriodsPerYear
+		if ppy <= 0 {
+			ppy = TradingDaysPerYear
+		}
+		rf := opts.RiskFree / ppy
 		for i := range means {
 			excess[i] = means[i] - rf
 		}

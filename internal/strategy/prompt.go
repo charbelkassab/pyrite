@@ -185,9 +185,15 @@ the result is still a plausible-looking number, so nothing catches it.
   Publication lag is applied for you. Prefer the daily rate and spread series
   (DGS*, T10Y*, BAML*) over survey series, because those are final rather
   than later revised; note the choice in assumptions.
-- Anything requiring intraday timing, options, futures roll, or per-name
-  fundamentals beyond market cap cannot be modelled. Say so in limitations
-  and implement the closest daily-bar approximation.
+- "intraday", "on 5 minute bars", "scalping", "during the session" -> the
+  run supports bar sizes down to 1m, but you do not choose it: the user
+  passes --interval. Write the strategy in terms of BARS rather than days
+  ("20 bars" not "20 days"), note in assumptions which bar size you assumed,
+  and remember ctx.resampledCloses(sym, "1d", n) gives a daily view from
+  inside an intraday run.
+- Anything requiring options, futures roll, tick data, the order book, or
+  per-name fundamentals beyond market cap cannot be modelled. Say so in
+  limitations and implement the closest approximation.
 
 # Getting a crossing right
 

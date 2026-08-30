@@ -58,6 +58,11 @@ func addCommonSearchFlags(fs *flag.FlagSet) (params *paramFlags, objective, csvP
 	return
 }
 
+// addIntervalFlag registers the bar-size flag shared by the search commands.
+func addIntervalFlag(fs *flag.FlagSet) *string {
+	return fs.String("interval", "1d", "bar size: "+strings.Join(market.IntervalNames(), ", "))
+}
+
 // addCodeFileFlags registers the compiler bypass shared by both commands.
 func addCodeFileFlags(fs *flag.FlagSet) (codeFile *string, warmup *int, example *string) {
 	codeFile = fs.String("code-file", "",
@@ -110,6 +115,7 @@ func cmdSweep(args []string) error {
 	params, objective, csvPath, workers, maxCombos, cash, from, to, universe, benchmark, offline, asJSON :=
 		addCommonSearchFlags(fs)
 	codeFile, warmup, example := addCodeFileFlags(fs)
+	interval := addIntervalFlag(fs)
 	top := fs.Int("top", 15, "how many rows to print")
 	heatmap := fs.Bool("heatmap", true, "draw the parameter surface when two or more vary")
 
@@ -128,6 +134,7 @@ func cmdSweep(args []string) error {
 		offline: offline, cash: *cash, from: *from, to: *to,
 		universe: *universe, benchmark: *benchmark,
 		codeFile: *codeFile, warmup: *warmup, example: *example,
+		interval: *interval,
 	})
 	if err != nil {
 		return err
@@ -170,6 +177,7 @@ func cmdWalkForward(args []string) error {
 	params, objective, csvPath, workers, maxCombos, cash, from, to, universe, benchmark, offline, asJSON :=
 		addCommonSearchFlags(fs)
 	codeFile, warmup, example := addCodeFileFlags(fs)
+	interval := addIntervalFlag(fs)
 	train := fs.Int("train", 504, "training window in trading sessions")
 	test := fs.Int("test", 126, "test window in trading sessions")
 	embargo := fs.Int("embargo", -1, "sessions dropped between train and test (default: the strategy's warm-up)")
@@ -190,6 +198,7 @@ func cmdWalkForward(args []string) error {
 		offline: offline, cash: *cash, from: *from, to: *to,
 		universe: *universe, benchmark: *benchmark,
 		codeFile: *codeFile, warmup: *warmup, example: *example,
+		interval: *interval,
 	})
 	if err != nil {
 		return err
@@ -233,6 +242,7 @@ type searchOpts struct {
 	codeFile string
 	warmup   int
 	example  string
+	interval string
 }
 
 // prepareSearch compiles the prompt and builds the base spec both search
@@ -289,6 +299,10 @@ func prepareSearch(fs *flag.FlagSet, prompt string, o searchOpts) (*searchSetup,
 		if o.warmup > 0 {
 			spec.Warmup = o.warmup
 		}
+		if err := applyInterval(a, &spec, o.interval); err != nil {
+			stop()
+			return nil, err
+		}
 		return &searchSetup{app: a, plan: plan, spec: spec, ctx: ctx, cancel: stop}, nil
 	}
 
@@ -305,6 +319,10 @@ func prepareSearch(fs *flag.FlagSet, prompt string, o searchOpts) (*searchSetup,
 		spec := app.BuildSpec(plan, "", opts)
 		if o.warmup > 0 {
 			spec.Warmup = o.warmup
+		}
+		if err := applyInterval(a, &spec, o.interval); err != nil {
+			stop()
+			return nil, err
 		}
 		return &searchSetup{app: a, plan: plan, spec: spec, ctx: ctx, cancel: stop}, nil
 	}
@@ -331,10 +349,26 @@ func prepareSearch(fs *flag.FlagSet, prompt string, o searchOpts) (*searchSetup,
 	fmt.Fprintf(os.Stderr, "compiled in %s using %s/%s\n\n",
 		time.Since(started).Round(time.Millisecond), plan.Provider, plan.Model)
 
-	return &searchSetup{
-		app: a, plan: plan, spec: app.BuildSpec(plan, prompt, opts),
-		ctx: ctx, cancel: stop,
-	}, nil
+	spec := app.BuildSpec(plan, prompt, opts)
+	if err := applyInterval(a, &spec, o.interval); err != nil {
+		stop()
+		return nil, err
+	}
+	return &searchSetup{app: a, plan: plan, spec: spec, ctx: ctx, cancel: stop}, nil
+}
+
+// applyInterval resolves and validates a bar size onto a spec.
+func applyInterval(a *app.App, spec *engine.Spec, name string) error {
+	iv, err := market.ParseInterval(name)
+	if err != nil {
+		return err
+	}
+	if !a.Store.SupportsInterval(iv) {
+		return fmt.Errorf("the configured data provider serves daily bars only, so %s is unavailable.\n"+
+			"  Yahoo serves intraday: set PYRITE_DATA_PROVIDERS=yahoo", iv)
+	}
+	spec.Interval = iv
+	return nil
 }
 
 // printSweep renders the search as a ranked table, a surface and a verdict.
@@ -612,6 +646,7 @@ func cmdImprove(args []string) error {
 	_, objective, csvPath, workers, maxCombos, cash, from, to, universe, benchmark, offline, asJSON :=
 		addCommonSearchFlags(fs)
 	codeFile, warmup, example := addCodeFileFlags(fs)
+	interval := addIntervalFlag(fs)
 	budget := fs.Int("budget", 6, "how many candidates to try")
 	holdout := fs.Float64("holdout", 0.3, "fraction of the period withheld from the search")
 	sweepParams := fs.Bool("sweep-params", true, "also search each candidate's declared parameters")
@@ -633,6 +668,7 @@ func cmdImprove(args []string) error {
 		offline: offline, cash: *cash, from: *from, to: *to,
 		universe: *universe, benchmark: *benchmark,
 		codeFile: *codeFile, warmup: *warmup, example: *example,
+		interval: *interval,
 	})
 	if err != nil {
 		return err
@@ -722,6 +758,7 @@ func cmdReport(args []string) error {
 	params, objective, _, workers, maxCombos, cash, from, to, universe, benchmark, offline, asJSON :=
 		addCommonSearchFlags(fs)
 	codeFile, warmup, example := addCodeFileFlags(fs)
+	interval := addIntervalFlag(fs)
 	out := fs.String("out", "", "write the report here instead of stdout")
 	skipSweep := fs.Bool("no-sweep", false, "skip the parameter search")
 	skipWF := fs.Bool("no-walkforward", false, "skip the walk-forward evaluation")
@@ -741,6 +778,7 @@ func cmdReport(args []string) error {
 		offline: offline, cash: *cash, from: *from, to: *to,
 		universe: *universe, benchmark: *benchmark,
 		codeFile: *codeFile, warmup: *warmup, example: *example,
+		interval: *interval,
 	})
 	if err != nil {
 		return err

@@ -12,6 +12,10 @@ import (
 var ErrNotFound = errors.New("symbol not found")
 
 // Provider fetches historical daily bars for a symbol.
+//
+// Three methods, deliberately. Writing one for a new vendor should be an
+// afternoon, and a provider that only serves daily bars is a complete and
+// useful provider.
 type Provider interface {
 	// Name identifies the provider in logs and the UI.
 	Name() string
@@ -21,6 +25,50 @@ type Provider interface {
 	// Search resolves a free-text query to candidate symbols. Providers that
 	// cannot search may return nil, nil.
 	Search(ctx context.Context, query string) ([]Quote, error)
+}
+
+// IntervalProvider is an optional capability: a provider that can serve bar
+// sizes other than daily.
+//
+// It is a separate interface rather than an extra parameter on Fetch so that
+// Provider stays three methods. A vendor without intraday data — or a
+// contributor who only needs daily — implements Provider and nothing else,
+// and the store reports clearly when a run asks for a size nobody can serve.
+type IntervalProvider interface {
+	Provider
+	// FetchInterval returns bars of the requested size.
+	FetchInterval(ctx context.Context, symbol string, from, to Day, iv Interval) (*Series, error)
+	// SupportedIntervals lists what this provider can actually serve.
+	SupportedIntervals() []Interval
+}
+
+// SupportsInterval reports whether a provider can serve a bar size.
+func SupportsInterval(p Provider, iv Interval) bool {
+	if iv == "" || iv == Interval1d {
+		return true
+	}
+	ip, ok := p.(IntervalProvider)
+	if !ok {
+		return false
+	}
+	for _, s := range ip.SupportedIntervals() {
+		if s == iv {
+			return true
+		}
+	}
+	return false
+}
+
+// fetchAt fetches at a bar size, using the optional capability when present.
+func fetchAt(ctx context.Context, p Provider, symbol string, from, to Day, iv Interval) (*Series, error) {
+	if iv == "" || iv == Interval1d {
+		return p.Fetch(ctx, symbol, from, to)
+	}
+	ip, ok := p.(IntervalProvider)
+	if !ok {
+		return nil, fmt.Errorf("%s serves daily bars only, so %s is unavailable", p.Name(), iv)
+	}
+	return ip.FetchInterval(ctx, symbol, from, to, iv)
 }
 
 // Store is a Provider wrapped with an in-memory and on-disk cache. It is the
@@ -36,10 +84,12 @@ type Store struct {
 	// dataDir lets a user override a bundled membership table.
 	dataDir string
 
-	mu   sync.RWMutex
+	mu sync.RWMutex
+	// Keyed by symbol and bar size together: 5-minute AAPL and daily AAPL are
+	// different series, and one must never be served for the other.
 	mem  map[string]*Series
 	cold map[string]bool // symbols known to have no data, to avoid refetch
-	// span records the earliest date already requested per symbol, so a
+	// span records the earliest date already requested per key, so a
 	// full-history request is served from cache rather than refetched every
 	// run just because the symbol has no bars back that far.
 	span map[string]Day
@@ -56,6 +106,9 @@ func NewStore(p Provider, cache *DiskCache, fund *Fundamentals) *Store {
 		span:     map[string]Day{},
 	}
 }
+
+// SupportsInterval reports whether the configured provider can serve a size.
+func (s *Store) SupportsInterval(iv Interval) bool { return SupportsInterval(s.provider, iv) }
 
 // ProviderName reports the underlying provider.
 func (s *Store) ProviderName() string { return s.provider.Name() }
@@ -95,15 +148,24 @@ func (s *Store) Membership(index string) (*Membership, error) {
 // The store always fetches and caches the widest range it has seen for a
 // symbol, so repeated backtests over overlapping windows hit the cache.
 func (s *Store) Get(ctx context.Context, symbol string, from, to Day) (*Series, error) {
+	return s.GetInterval(ctx, symbol, from, to, Interval1d)
+}
+
+// GetInterval is Get at a specific bar size.
+func (s *Store) GetInterval(ctx context.Context, symbol string, from, to Day, iv Interval) (*Series, error) {
 	symbol = NormalizeSymbol(symbol)
+	if iv == "" {
+		iv = Interval1d
+	}
+	key := seriesKey(symbol, iv)
 
 	s.mu.RLock()
-	if s.cold[symbol] {
+	if s.cold[key] {
 		s.mu.RUnlock()
 		return nil, fmt.Errorf("%w: %s", ErrNotFound, symbol)
 	}
-	ser, ok := s.mem[symbol]
-	haveFrom := s.span[symbol]
+	ser, ok := s.mem[key]
+	haveFrom := s.span[key]
 	s.mu.RUnlock()
 	if ok && covers(ser, haveFrom, from, to) {
 		return ser, nil
@@ -111,12 +173,12 @@ func (s *Store) Get(ctx context.Context, symbol string, from, to Day) (*Series, 
 
 	// Try the on-disk cache before hitting the network.
 	if s.cache != nil && ser == nil {
-		if cached, cachedFrom, err := s.cache.Load(symbol); err == nil && cached != nil {
+		if cached, cachedFrom, err := s.cache.Load(key); err == nil && cached != nil {
 			ser = cached
 			haveFrom = cachedFrom
 			s.mu.Lock()
-			s.mem[symbol] = cached
-			s.span[symbol] = cachedFrom
+			s.mem[key] = cached
+			s.span[key] = cachedFrom
 			s.mu.Unlock()
 			if covers(cached, cachedFrom, from, to) {
 				return cached, nil
@@ -124,7 +186,7 @@ func (s *Store) Get(ctx context.Context, symbol string, from, to Day) (*Series, 
 		}
 	}
 
-	fetched, err := s.provider.Fetch(ctx, symbol, from, to)
+	fetched, err := fetchAt(ctx, s.provider, symbol, from, to, iv)
 	if err != nil {
 		// A stale-but-usable cache beats a hard failure when offline.
 		if ser != nil {
@@ -132,7 +194,7 @@ func (s *Store) Get(ctx context.Context, symbol string, from, to Day) (*Series, 
 		}
 		if errors.Is(err, ErrNotFound) {
 			s.mu.Lock()
-			s.cold[symbol] = true
+			s.cold[key] = true
 			s.mu.Unlock()
 		}
 		return nil, err
@@ -144,18 +206,34 @@ func (s *Store) Get(ctx context.Context, symbol string, from, to Day) (*Series, 
 		widest = haveFrom
 	}
 	s.mu.Lock()
-	s.mem[symbol] = merged
-	s.span[symbol] = widest
+	s.mem[key] = merged
+	s.span[key] = widest
 	s.mu.Unlock()
 	if s.cache != nil {
-		_ = s.cache.Save(merged, widest)
+		_ = s.cache.Save2(key, merged, widest)
 	}
 	return merged, nil
+}
+
+// seriesKey identifies a symbol at a bar size.
+//
+// Daily keeps the bare symbol so existing cache files stay valid and the
+// common case has no suffix to read past.
+func seriesKey(symbol string, iv Interval) string {
+	if iv == "" || iv == Interval1d {
+		return symbol
+	}
+	return symbol + "@" + string(iv)
 }
 
 // GetMany fetches several symbols concurrently, returning the successes and a
 // map of per-symbol errors. A single bad ticker must not fail a whole run.
 func (s *Store) GetMany(ctx context.Context, symbols []string, from, to Day) (map[string]*Series, map[string]error) {
+	return s.GetManyInterval(ctx, symbols, from, to, Interval1d)
+}
+
+// GetManyInterval is GetMany at a specific bar size.
+func (s *Store) GetManyInterval(ctx context.Context, symbols []string, from, to Day, iv Interval) (map[string]*Series, map[string]error) {
 	out := make(map[string]*Series, len(symbols))
 	errs := make(map[string]error)
 	var mu sync.Mutex
@@ -173,7 +251,7 @@ func (s *Store) GetMany(ctx context.Context, symbols []string, from, to Day) (ma
 			defer wg.Done()
 			sem <- struct{}{}
 			defer func() { <-sem }()
-			ser, err := s.Get(ctx, sym, from, to)
+			ser, err := s.GetInterval(ctx, sym, from, to, iv)
 			mu.Lock()
 			defer mu.Unlock()
 			if err != nil {

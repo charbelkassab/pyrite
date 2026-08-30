@@ -20,26 +20,92 @@ type Day string
 // Layout is the canonical date layout used throughout pyrite.
 const Layout = "2006-01-02"
 
-// NewDay converts a time.Time to a Day in UTC.
+// StampLayout is the canonical layout for an intraday bar.
+//
+// It extends Layout rather than replacing it, which is the whole reason this
+// type is still a string: "2024-01-02" < "2024-01-02T09:30" < "2024-01-03"
+// under ordinary string comparison, so every existing sort, map key, range
+// check and chart axis keeps working unchanged when intraday bars appear.
+const StampLayout = "2006-01-02T15:04"
+
+// NewDay converts a time.Time to a date-only Day in UTC.
 func NewDay(t time.Time) Day { return Day(t.UTC().Format(Layout)) }
 
-// ParseDay parses an ISO date.
+// NewStamp converts a time.Time to an intraday Day in UTC.
+func NewStamp(t time.Time) Day { return Day(t.UTC().Format(StampLayout)) }
+
+// ParseDay parses an ISO date, with or without a time component.
 func ParseDay(s string) (Day, error) {
-	t, err := time.Parse(Layout, strings.TrimSpace(s))
-	if err != nil {
-		return "", fmt.Errorf("invalid date %q (want YYYY-MM-DD): %w", s, err)
+	s = strings.TrimSpace(s)
+	// Tolerate the seconds and zone a user may paste from elsewhere; the
+	// canonical form keeps only what a bar is identified by.
+	for _, layout := range []string{Layout, StampLayout, "2006-01-02T15:04:05", time.RFC3339} {
+		t, err := time.Parse(layout, s)
+		if err != nil {
+			continue
+		}
+		if layout == Layout {
+			return NewDay(t), nil
+		}
+		return NewStamp(t), nil
 	}
-	return NewDay(t), nil
+	return "", fmt.Errorf("invalid date %q (want YYYY-MM-DD or YYYY-MM-DDTHH:MM)", s)
 }
 
-// Time converts back to a time.Time at UTC midnight.
+// Time converts back to a time.Time at UTC, midnight for a date-only Day.
 func (d Day) Time() time.Time {
+	if t, err := time.Parse(StampLayout, string(d)); err == nil {
+		return t
+	}
 	t, _ := time.Parse(Layout, string(d))
 	return t
 }
 
-// Add returns the day shifted by n calendar days.
-func (d Day) Add(n int) Day { return NewDay(d.Time().AddDate(0, 0, n)) }
+// Intraday reports whether this Day identifies a bar within a session.
+func (d Day) Intraday() bool { return len(d) > len(Layout) }
+
+// Date returns the calendar day, discarding any time component.
+//
+// Everything that reasons about the calendar — the first session of a month,
+// index membership, a share count as of a date — works on this rather than on
+// the raw value, so those questions mean the same thing whatever the bar size.
+func (d Day) Date() Day {
+	if len(d) >= len(Layout) {
+		return d[:len(Layout)]
+	}
+	return d
+}
+
+// EndOfDay extends a date-only Day to cover every bar within it.
+//
+// Without this, an inclusive upper bound of "2024-01-05" excludes
+// "2024-01-05T09:30", because the timestamp sorts after the bare date. The
+// symptom is a range that silently drops its own last session, which is the
+// kind of off-by-one that produces a plausible-looking backtest.
+func (d Day) EndOfDay() Day {
+	if d == "" || d.Intraday() {
+		return d
+	}
+	return d + "T23:59"
+}
+
+// Add returns the day shifted by n calendar days, preserving any time.
+func (d Day) Add(n int) Day {
+	t := d.Time().AddDate(0, 0, n)
+	if d.Intraday() {
+		return NewStamp(t)
+	}
+	return NewDay(t)
+}
+
+// AddInterval shifts by n bars of the given size.
+func (d Day) AddInterval(n int, iv Interval) Day {
+	if !iv.Intraday() {
+		return d.Add(n * int(iv.Duration()/(24*time.Hour)))
+	}
+	t := d.Time().Add(time.Duration(n) * iv.Duration())
+	return NewStamp(t)
+}
 
 // Before reports whether d is earlier than other.
 func (d Day) Before(other Day) bool { return d < other }

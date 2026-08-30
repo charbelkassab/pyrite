@@ -149,7 +149,7 @@ func expectedMax(sd float64, n int) float64 {
 //
 // bestCurve is the winning strategy's equity, and trialScores are the
 // annualised Sharpes across the whole search.
-func (r *Robustness) AddDeflatedSharpe(bestCurve []EquityPoint, trialScores []float64) {
+func (r *Robustness) AddDeflatedSharpe(bestCurve []EquityPoint, trialScores []float64, sc Scale) {
 	r.DeflatedSharpe = Ratio(math.NaN())
 
 	rets := dailyReturns(bestCurve)
@@ -175,7 +175,7 @@ func (r *Robustness) AddDeflatedSharpe(bestCurve []EquityPoint, trialScores []fl
 
 	// The spread of trial Sharpes, de-annualised to match sr.
 	_, spread := meanStdev(trialScores)
-	spread /= math.Sqrt(TradingDaysPerYear)
+	spread /= sc.Root()
 	if spread <= 0 {
 		return
 	}

@@ -42,8 +42,8 @@ if (fast === null) return;      // not enough data yet
 
 | Expression | Meaning |
 | --- | --- |
-| `ctx.date` | today as `"2024-03-05"` (a string property, not a function) |
-| `ctx.dayIndex` | 0-based index of the day within the run |
+| `ctx.date` | today as `"2024-03-05"`, or `"2024-03-05T14:30"` on intraday bars (a string property, not a function) |
+| `ctx.dayIndex` | 0-based index of the bar within the run |
 | `ctx.year`, `ctx.month`, `ctx.dayOfMonth`, `ctx.weekday` | numeric parts; `weekday` is 0=Sunday |
 | `ctx.isFirstTradingDayOfMonth()` | true on the first session of each month |
 | `ctx.isFirstTradingDayOfWeek()` / `ctx.isFirstTradingDayOfYear()` | as above |
@@ -353,6 +353,51 @@ That is lookahead bias and it will flatter results, sometimes enormously.
 `ctx.ai()` has a milder version of the same problem: the model knows what
 happened after the simulated date. Treat AI-driven backtests as illustrations
 of a mechanism, not as evidence that a strategy works.
+
+## Bar sizes
+
+By default a strategy sees one bar per trading day. `--interval` changes that:
+`1m`, `5m`, `15m`, `30m`, `1h`, `1d`, `1wk`, `1mo`.
+
+```bash
+pyrite run --code-file strategy.js --interval 15m
+```
+
+`onDay(ctx)` is then called once per **bar**, not once per day, and `ctx.date`
+carries a timestamp (`"2024-01-02T14:30"`, always UTC). Everything else works
+unchanged: indicators count bars, orders still fill at the next bar's open, and
+the calendar helpers still mean what they say — `ctx.isFirstTradingDayOfMonth()`
+is true on the first *bar* of the month's first session, once.
+
+Every annualised statistic scales with the bar size automatically. A Sharpe
+ratio computed on 1-minute bars and annualised as though they were daily would
+be out by about twentyfold, in the flattering direction.
+
+### Reading a coarser timeframe
+
+`ctx.resampledCloses(sym, tf, n)` returns the last `n` closes aggregated up to
+a coarser size, and `ctx.resample(sym, tf, n)` returns full bars.
+
+```js
+function onDay(ctx) {
+  // A daily trend filter, from inside a 15-minute run.
+  const daily = ctx.resampledCloses("SPY", "1d", 200);
+  if (!daily || daily.length < 200) return;
+
+  const avg = daily.reduce((a, b) => a + b, 0) / daily.length;
+  if (daily[daily.length - 1] < avg) return;   // only trade with the daily trend
+
+  ...
+}
+```
+
+Nothing after the simulated moment is included. Asking for "today's daily bar"
+from inside an intraday run gives the bar **as it stands so far**, not as it
+will close — which is the only thing that makes this safe to use.
+
+Resampling only ever aggregates. Asking for a finer size than the run is using
+returns the run's own bars, because producing finer ones would mean inventing
+prices.
 
 ## Economic data
 

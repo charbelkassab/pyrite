@@ -64,7 +64,7 @@ type RiskMetrics struct {
 
 // ComputeRiskMetrics derives distribution and drawdown statistics from an
 // equity curve.
-func ComputeRiskMetrics(curve []EquityPoint, cagr, riskFreeRate float64) RiskMetrics {
+func ComputeRiskMetrics(curve []EquityPoint, cagr float64, sc Scale) RiskMetrics {
 	nan := Ratio(math.NaN())
 	r := RiskMetrics{Omega: nan, MartinRatio: nan, TailRatio: nan, GainToPain: nan,
 		UpCapture: nan, DownCapture: nan}
@@ -76,7 +76,7 @@ func ComputeRiskMetrics(curve []EquityPoint, cagr, riskFreeRate float64) RiskMet
 	if len(rets) < 2 {
 		return r
 	}
-	thr := riskFreeRate / TradingDaysPerYear
+	thr := sc.PerPeriodRF()
 
 	// Omega and gain-to-pain share a pass over the returns.
 	var above, below, total, painSum float64
@@ -180,7 +180,7 @@ type RollingPoint struct {
 // A single Sharpe for a ten-year run hides the fact that it was 2.4 for three
 // years and 0.1 for seven. The rolling series is what makes that visible, and
 // it is the cheapest possible defence against a headline number.
-func RollingStats(curve, benchmark []EquityPoint, window int, riskFreeRate float64) []RollingPoint {
+func RollingStats(curve, benchmark []EquityPoint, window int, sc Scale) []RollingPoint {
 	if window < 2 || len(curve) <= window {
 		return nil
 	}
@@ -193,7 +193,6 @@ func RollingStats(curve, benchmark []EquityPoint, window int, riskFreeRate float
 	}
 
 	out := make([]RollingPoint, 0, len(rets)-window+1)
-	rf := riskFreeRate / TradingDaysPerYear
 	for i := window; i <= len(rets); i++ {
 		w := rets[i-window : i]
 		mean, sd := meanStdev(w)
@@ -203,8 +202,8 @@ func RollingStats(curve, benchmark []EquityPoint, window int, riskFreeRate float
 			Beta:   Ratio(math.NaN()),
 		}
 		if sd > 0 {
-			p.Sharpe = Ratio((mean - rf) / sd * math.Sqrt(TradingDaysPerYear))
-			p.Vol = sd * math.Sqrt(TradingDaysPerYear)
+			p.Sharpe = Ratio(sc.Sharpe(mean, sd))
+			p.Vol = sc.Vol(sd)
 		}
 		if bench != nil {
 			p.Beta = Ratio(Beta(w, bench[i-window:i]))

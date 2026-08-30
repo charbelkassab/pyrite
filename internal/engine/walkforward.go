@@ -245,8 +245,9 @@ func RunWalkForward(ctx context.Context, ws WalkForwardSpec, store *market.Store
 	// The stitched curve is chained across folds, so its drawdowns are
 	// recomputed here rather than inherited from any single fold.
 	rebuildDrawdowns(res.Stitched)
-	res.StitchedMetrics = ComputeMetrics(res.Stitched, ws.Base.RiskFreeRate)
-	res.StitchedRisk = ComputeRiskMetrics(res.Stitched, res.StitchedMetrics.CAGR, ws.Base.RiskFreeRate)
+	sc := ScaleFor(ws.Base.Interval, ws.Base.RiskFreeRate)
+	res.StitchedMetrics = ComputeMetrics(res.Stitched, sc)
+	res.StitchedRisk = ComputeRiskMetrics(res.Stitched, res.StitchedMetrics.CAGR, sc)
 	if isN > 0 {
 		res.InSampleReturn = isSum / float64(isN)
 	}

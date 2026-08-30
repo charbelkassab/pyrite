@@ -84,6 +84,70 @@ func (c *Chain) Fetch(ctx context.Context, symbol string, from, to Day) (*Series
 	return nil, firstErr
 }
 
+// SupportedIntervals is the union of what the chain's members can serve.
+func (c *Chain) SupportedIntervals() []Interval {
+	seen := map[Interval]bool{Interval1d: true}
+	for _, p := range c.Providers {
+		ip, ok := p.(IntervalProvider)
+		if !ok {
+			continue
+		}
+		for _, iv := range ip.SupportedIntervals() {
+			seen[iv] = true
+		}
+	}
+	out := make([]Interval, 0, len(seen))
+	for _, iv := range IntervalNames() {
+		if seen[Interval(iv)] {
+			out = append(out, Interval(iv))
+		}
+	}
+	return out
+}
+
+// FetchInterval tries each member that can serve the requested bar size.
+//
+// Members that cannot are skipped rather than counted as failures: a
+// daily-only vendor sitting behind an intraday one in the chain is a normal
+// configuration, not an error, and reporting it as one would bury the real
+// failure when there is one.
+func (c *Chain) FetchInterval(ctx context.Context, symbol string, from, to Day, iv Interval) (*Series, error) {
+	if iv == "" || iv == Interval1d {
+		return c.Fetch(ctx, symbol, from, to)
+	}
+
+	var capable []Provider
+	for _, p := range c.Providers {
+		if SupportsInterval(p, iv) {
+			capable = append(capable, p)
+		}
+	}
+	if len(capable) == 0 {
+		return nil, fmt.Errorf("none of %s serves %s bars", c.Name(), iv)
+	}
+
+	var firstErr error
+	for i, p := range capable {
+		ser, err := fetchAt(ctx, p, symbol, from, to, iv)
+		if err == nil && ser != nil && len(ser.Bars) > 0 {
+			return ser, nil
+		}
+		if err == nil {
+			err = fmt.Errorf("%w: %s at %s", ErrNotFound, symbol, iv)
+		}
+		if firstErr == nil {
+			firstErr = err
+		}
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		if c.OnFallback != nil && i+1 < len(capable) {
+			c.OnFallback(symbol, p.Name(), capable[i+1].Name(), err)
+		}
+	}
+	return nil, firstErr
+}
+
 // Search asks the first provider that can answer.
 func (c *Chain) Search(ctx context.Context, query string) ([]Quote, error) {
 	var firstErr error

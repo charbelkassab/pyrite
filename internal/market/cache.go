@@ -70,6 +70,12 @@ func safeName(symbol string) string {
 	var b strings.Builder
 	for _, r := range strings.ToUpper(symbol) {
 		switch {
+		case r == '@':
+			// The bar-size separator in a series key, e.g. AAPL@5M. Passed
+			// through rather than escaped: it is a legal filename character
+			// on every platform, and mapping it to something in the allowed
+			// set would let a ticker collide with a bar-size key.
+			b.WriteRune(r)
 		case r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '-', r == '_':
 			b.WriteRune(r)
 		case r == '^':
@@ -117,6 +123,15 @@ func (c *DiskCache) Load(symbol string) (*Series, Day, error) {
 // Save writes a series to disk atomically, remembering the earliest window
 // requested so far.
 func (c *DiskCache) Save(s *Series, requestedFrom Day) error {
+	if s == nil {
+		return nil
+	}
+	return c.Save2(s.Symbol, s, requestedFrom)
+}
+
+// Save2 writes under an explicit key, which is how a non-daily series is kept
+// separate from the daily one for the same symbol.
+func (c *DiskCache) Save2(key string, s *Series, requestedFrom Day) error {
 	if s == nil || len(s.Bars) == 0 {
 		return nil
 	}
@@ -133,7 +148,7 @@ func (c *DiskCache) Save(s *Series, requestedFrom Day) error {
 	if err != nil {
 		return err
 	}
-	final := c.path(s.Symbol)
+	final := c.path(key)
 	tmp := final + ".tmp"
 	if err := os.WriteFile(tmp, b, 0o644); err != nil {
 		return err

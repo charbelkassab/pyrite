@@ -235,7 +235,7 @@ func (s *Server) handleSeries(w http.ResponseWriter, r *http.Request) {
 		}
 		resp = append(resp, out{
 			Symbol: sym, Label: label, Curve: curve,
-			Metrics: engine.ComputeMetrics(curve, 0),
+			Metrics: engine.ComputeMetrics(curve, engine.DailyScale(0)),
 		})
 	}
 	failed := map[string]string{}
@@ -306,6 +306,8 @@ type runRequest struct {
 	// Impact turns on the square-root market impact model. 1 is the usual
 	// empirical coefficient; 0 disables it.
 	Impact float64 `json:"impact,omitempty"`
+	// Interval is the bar size: 1m, 5m, 15m, 30m, 1h, 1d, 1wk, 1mo.
+	Interval string `json:"interval,omitempty"`
 
 	Params map[string]any `json:"params,omitempty"`
 }
@@ -461,6 +463,9 @@ func (s *Server) execute(ctx context.Context, run *Run, req runRequest) {
 		spec.Costs.CommissionPct = req.CommissionPct
 	}
 	spec.Costs.ImpactCoefficient = req.Impact
+	if iv, err := market.ParseInterval(req.Interval); err == nil {
+		spec.Interval = iv
+	}
 
 	opts.Progress = func(done, total int, day market.Day) {
 		pct := 0
@@ -893,6 +898,9 @@ func (s *Server) executeSweep(ctx context.Context, run *Run, req sweepRequest) {
 		spec.Costs.CommissionPct = req.CommissionPct
 	}
 	spec.Costs.ImpactCoefficient = req.Impact
+	if iv, err := market.ParseInterval(req.Interval); err == nil {
+		spec.Interval = iv
+	}
 
 	var err error
 	if req.WalkForward {
