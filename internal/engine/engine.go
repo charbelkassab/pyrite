@@ -214,6 +214,11 @@ type AIFunc func(ctx context.Context, day market.Day, prompt string, opts AIOpti
 // SearchFunc is the host callback backing ctx.web() and ctx.news().
 type SearchFunc func(ctx context.Context, day market.Day, query string, limit int, news bool) ([]SearchResult, error)
 
+// EconProvider supplies economic series to ctx.fred().
+type EconProvider interface {
+	Series(ctx context.Context, id string) (*market.EconSeries, error)
+}
+
 // ProgressFunc reports incremental progress during a run.
 type ProgressFunc func(done, total int, day market.Day)
 
@@ -222,8 +227,11 @@ type Engine struct {
 	spec  Spec
 	store *market.Store
 
-	AI       AIFunc
-	Search   SearchFunc
+	AI     AIFunc
+	Search SearchFunc
+	// Econ supplies macro series to ctx.fred(). Nil disables it, which is
+	// what offline mode does.
+	Econ     EconProvider
 	Progress ProgressFunc
 	// MaxAICalls caps ai()/web() calls for the whole run.
 	MaxAICalls int
@@ -259,6 +267,10 @@ type Engine struct {
 	lastOfWeek  map[market.Day]bool
 	// members is the point-in-time constituent table when spec.Index is set.
 	members *market.Membership
+	// econ caches macro series a strategy has asked for, and records which
+	// of them are revised so the critique can say so.
+	econ        map[string]*market.EconSeries
+	econRevised map[string]bool
 }
 
 // stopOrder is a standing exit registered by the strategy.

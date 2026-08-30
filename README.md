@@ -105,6 +105,7 @@ real market data as part of the project's [prompt corpus](internal/strategy/test
 | *"Hold 60% SPY and 40% AGG, rebalanced quarterly."* | Classic fixed allocation |
 | *"Trade KO against PEP when their price ratio is 2 standard deviations from its 60 day average."* | Market-neutral pairs trade with shorting |
 | *"Hold SPY normally but move to cash for a month whenever the VIX closes above 30."* | Volatility regime filter |
+| *"Hold equities only while the yield curve is not inverted."* | Reads real economic data, with publication lag applied |
 | *"Each month hold the 2 strongest S&P 500 sector ETFs by 3 month momentum."* | Sector rotation |
 | *"Every month hold the 20 strongest S&P 500 stocks over the last 6 months."* | Selects from **point-in-time** index membership, not today's list |
 | *"Hold SPY from November through April and cash from May through October."* | Seasonality |
@@ -501,7 +502,7 @@ function onDay(ctx) {
 
 `ctx` gives you prices and history, ~35 indicators, market-cap ranking, portfolio
 state, order placement by shares / dollars / target weight, stop-loss, take-profit
-and trailing stops, portfolio construction (`ctx.optimize` — minimum variance,
+and trailing stops, economic series from the St. Louis Fed, portfolio construction (`ctx.optimize` — minimum variance,
 maximum Sharpe, risk parity, hierarchical risk parity, with Ledoit–Wolf
 shrinkage), declared parameters, calendar helpers, persistent state, and the AI
 and web hooks.

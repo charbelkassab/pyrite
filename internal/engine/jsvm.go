@@ -531,6 +531,21 @@ func (v *strategyVM) installContext() error {
 		return rt.ToValue(out)
 	})
 
+	// ---- Economic data --------------------------------------------------
+
+	// fred(id) returns a macro series' value as of today, accounting for how
+	// late the figure was actually published.
+	set("fred", func(sym string) any { return nanToNull(e.fredValue(sym)) })
+	// fredChange(id, n) is the change over n calendar days, as a fraction.
+	set("fredChange", func(id string, days int) any {
+		now := e.fredValue(id)
+		then := e.fredValueOn(id, e.today.Add(-defInt(days, 365)))
+		if math.IsNaN(now) || math.IsNaN(then) || then == 0 {
+			return nil
+		}
+		return now/then - 1
+	})
+
 	set("correlation", func(a, b string, n int) any {
 		n = defInt(n, 60)
 		ra, rb := Returns(e.closes(a, n+1)), Returns(e.closes(b, n+1))
@@ -1134,6 +1149,55 @@ func (e *Engine) ohlc(sym string, n int) (high, low, close []float64) {
 		close = append(close, b.AdjClose)
 	}
 	return
+}
+
+// fredValue reads a macro series as of the simulated day.
+func (e *Engine) fredValue(id string) float64 {
+	return e.fredValueOn(id, e.today)
+}
+
+// fredValueOn reads a macro series as of an arbitrary day.
+//
+// Fetching happens lazily and once per series per run. A failure returns NaN
+// rather than an error: a strategy that cannot reach one macro series should
+// degrade, not die, and the warning tells the reader what it lost.
+func (e *Engine) fredValueOn(id string, day market.Day) float64 {
+	if e.Econ == nil || id == "" {
+		return math.NaN()
+	}
+	key := strings.ToUpper(strings.TrimSpace(id))
+	if e.econ == nil {
+		e.econ = map[string]*market.EconSeries{}
+		e.econRevised = map[string]bool{}
+	}
+	s, ok := e.econ[key]
+	if !ok {
+		var err error
+		s, err = e.Econ.Series(e.ctx, key)
+		if err != nil {
+			e.warnOnce("fred-"+key, fmt.Sprintf("could not load the %s series: %s",
+				key, truncateErr(err.Error())))
+			e.econ[key] = nil
+			return math.NaN()
+		}
+		e.econ[key] = s
+		if s.Revised {
+			e.econRevised[key] = true
+			e.warnOnce("fred-revised-"+key, fmt.Sprintf(
+				"%s is a revised series: the values used are today's vintage, not what "+
+					"was published at the time. Its %d-day release lag is applied, so the "+
+					"timing is right even though the figures are not the original prints.",
+				key, s.LagDays))
+		}
+	}
+	if s == nil {
+		return math.NaN()
+	}
+	v, ok := s.AsOf(day)
+	if !ok {
+		return math.NaN()
+	}
+	return v
 }
 
 // ohlcv is ohlc plus volume, for the flow indicators.

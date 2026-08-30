@@ -20,8 +20,10 @@ import (
 
 // App holds the long-lived services.
 type App struct {
-	Cfg      *config.Config
-	Store    *market.Store
+	Cfg   *config.Config
+	Store *market.Store
+	// Econ supplies macro series to ctx.fred(). Nil in offline mode.
+	Econ     engine.EconProvider
 	LLM      *llm.Client
 	Compiler *strategy.Compiler
 	Search   *websearch.Searcher
@@ -48,6 +50,14 @@ func New(cfg *config.Config) (*App, error) {
 	store := market.NewStore(provider, diskCache, fund)
 	store.SetDataDir(cfg.DataDir)
 
+	// Offline mode reaches no network at all, so macro series are simply
+	// unavailable rather than stubbed: ctx.fred() then returns null and the
+	// run says why, which is honest in a way fake data would not be.
+	var econ engine.EconProvider
+	if !cfg.OfflineMode {
+		econ = market.NewFRED()
+	}
+
 	aiCacheDir, err := cfg.CacheDir("ai-cache")
 	if err != nil {
 		return nil, err
@@ -72,6 +82,7 @@ func New(cfg *config.Config) (*App, error) {
 	return &App{
 		Cfg:      cfg,
 		Store:    store,
+		Econ:     econ,
 		LLM:      client,
 		Compiler: strategy.NewCompiler(client, store),
 		Search:   searcher,
@@ -247,6 +258,7 @@ func (a *App) Backtest(ctx context.Context, spec engine.Spec, opts RunOptions) (
 	eng := engine.New(spec, a.Store)
 	eng.MaxAICalls = a.Cfg.MaxAICallsPerRun
 	eng.Progress = opts.Progress
+	eng.Econ = a.Econ
 
 	if a.Cfg.AnyProviderEnabled() {
 		eng.AI = a.makeAIFunc(opts.AITier)

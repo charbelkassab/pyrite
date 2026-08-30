@@ -354,6 +354,42 @@ That is lookahead bias and it will flatter results, sometimes enormously.
 happened after the simulated date. Treat AI-driven backtests as illustrations
 of a mechanism, not as evidence that a strategy works.
 
+## Economic data
+
+`ctx.fred(id)` reads a series from the St. Louis Fed as of the simulated day.
+It needs no key.
+
+```js
+function onDay(ctx) {
+  if (!ctx.isFirstTradingDayOfMonth()) return;
+  const spread = ctx.fred("T10Y2Y");            // 10-year minus 2-year
+  if (spread === null) return;
+  ctx.setWeight("SPY", spread > 0 ? 1 : 0, "yield curve");
+}
+```
+
+`ctx.fredChange(id, days)` is the change over a window, as a fraction — so
+`ctx.fredChange("CPIAUCSL", 365)` is year-on-year inflation.
+
+Useful ids: `T10Y2Y` and `T10Y3M` (curve slope), `DGS10` / `DGS2` (Treasury
+yields), `DFF` (fed funds), `CPIAUCSL` (CPI), `UNRATE`, `PAYEMS`, `INDPRO`,
+`BAMLH0A0HYM2` (high-yield spread), `NFCI` (financial conditions), `UMCSENT`.
+
+**Release lag is applied, and it matters.** US CPI for March is stamped
+1 March and is not published until mid-April. A backtest that reads it on
+3 March is trading on a number nobody had. Each series carries its publication
+delay and is queried at *today minus that delay*, so `ctx.fred("CPIAUCSL")` in
+early March returns February's figure. An unrecognised id is assumed to be a
+lagged, revised survey, because being a month late on a daily rate costs far
+less than being a month early on a CPI print.
+
+**Revised series are still not quite point-in-time.** The endpoint serves
+today's vintage, not the vintage as of the simulated day, so a figure that was
+later restated appears here in its restated form. The timing is right; the
+numbers are the current ones. Daily market rates — the `DGS*`, `T10Y*` and
+spread series — are never restated and are exact. The run warns when a strategy
+reads a revised series.
+
 ## State and logging
 
 `ctx.state` is an object that persists across days — use it for anything you

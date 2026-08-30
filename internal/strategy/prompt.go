@@ -179,6 +179,12 @@ the result is still a plausible-looking number, so nothing catches it.
 - "when the VIX is above N" -> include "^VIX" in the universe and read
   ctx.price("^VIX"). Note in assumptions that VIX itself is not tradable, so
   it is used as a signal only.
+- "when the yield curve inverts" / "while inflation is falling" / anything
+  conditioned on the economy -> ctx.fred(id), e.g. ctx.fred("T10Y2Y") for
+  the 10y-2y spread or ctx.fredChange("CPIAUCSL", 365) for year-on-year CPI.
+  Publication lag is applied for you. Prefer the daily rate and spread series
+  (DGS*, T10Y*, BAML*) over survey series, because those are final rather
+  than later revised; note the choice in assumptions.
 - Anything requiring intraday timing, options, futures roll, or per-name
   fundamentals beyond market cap cannot be modelled. Say so in limitations
   and implement the closest daily-bar approximation.
