@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"math"
+	"strings"
 	"testing"
 
 	"github.com/charbelkassab/natural-quant/internal/market"
@@ -414,4 +415,69 @@ func mustFundamentals(t *testing.T) *market.Fundamentals {
 		t.Fatalf("fundamentals: %v", err)
 	}
 	return f
+}
+
+// The API reference documents ctx.universe([...]) and ctx.warmup(n) as things
+// setup() sets. Both are read by loadData, which runs before setup(), so
+// without a reload pass they are documented but inert: a strategy that chooses
+// its own symbols fails with "empty universe", and one that raises its own
+// warm-up silently trades on too little history.
+func TestSetupCanChooseTheUniverse(t *testing.T) {
+	spec := baseSpec(`
+		function setup(ctx) { ctx.universe(["MSFT"]); }
+		function onDay(ctx) {
+			if (ctx.dayIndex === 0) ctx.buy("MSFT", { pctCash: 0.9 }, "chosen in setup");
+		}
+	`)
+	// Deliberately empty: setup() is the only thing that names a symbol.
+	spec.Universe = nil
+
+	res, err := New(spec, newTestStore(t)).Run(context.Background())
+	if err != nil {
+		t.Fatalf("a strategy that sets its own universe should run: %v", err)
+	}
+	if len(res.Fills) == 0 {
+		t.Fatal("no fills: the universe setup() chose was never loaded")
+	}
+	if res.Fills[0].Symbol != "MSFT" {
+		t.Errorf("traded %s, want MSFT", res.Fills[0].Symbol)
+	}
+}
+
+func TestSetupCanRaiseTheWarmup(t *testing.T) {
+	// A 200-day average is only available on the first traded day if setup()'s
+	// warm-up was honoured, because the spec asked for far less.
+	spec := baseSpec(`
+		function setup(ctx) { ctx.universe(["AAPL"]); ctx.warmup(200); }
+		function onDay(ctx) {
+			if (ctx.dayIndex === 0 && ctx.sma("AAPL", 200) !== null) {
+				ctx.buy("AAPL", { pctCash: 0.5 }, "had 200 bars on day one");
+			}
+		}
+	`)
+	spec.Universe = []string{"AAPL"}
+	spec.Warmup = 5
+
+	res, err := New(spec, newTestStore(t)).Run(context.Background())
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if len(res.Fills) == 0 {
+		t.Fatal("the 200-day average was unavailable, so setup()'s warm-up was ignored")
+	}
+}
+
+func TestEmptyUniverseAfterSetupIsStillAnError(t *testing.T) {
+	// Deferring the check must not swallow it: a strategy that never names a
+	// symbol should still say so clearly.
+	spec := baseSpec(`function onDay(ctx) {}`)
+	spec.Universe = nil
+
+	_, err := New(spec, newTestStore(t)).Run(context.Background())
+	if err == nil {
+		t.Fatal("expected an error for a strategy with no symbols at all")
+	}
+	if !strings.Contains(err.Error(), "universe") {
+		t.Errorf("the error should name the problem: %v", err)
+	}
 }

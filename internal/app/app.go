@@ -44,12 +44,7 @@ func New(cfg *config.Config) (*App, error) {
 		return nil, fmt.Errorf("load fundamentals: %w", err)
 	}
 
-	var provider market.Provider
-	if cfg.OfflineMode {
-		provider = market.NewSyntheticProvider()
-	} else {
-		provider = market.NewYahooProvider()
-	}
+	provider := buildProvider(cfg)
 	store := market.NewStore(provider, diskCache, fund)
 
 	aiCacheDir, err := cfg.CacheDir("ai-cache")
@@ -81,6 +76,49 @@ func New(cfg *config.Config) (*App, error) {
 		Search:   searcher,
 		AICache:  aiCache,
 	}, nil
+}
+
+// buildProvider assembles the market data source from configuration.
+//
+// Offline mode is absolute: it swaps in synthetic data and never reaches the
+// network, which is what makes the whole tool usable and testable with no
+// keys and no connection.
+func buildProvider(cfg *config.Config) market.Provider {
+	if cfg.OfflineMode {
+		return market.NewSyntheticProvider()
+	}
+
+	names := cfg.DataProviders
+	if len(names) == 0 {
+		names = []string{"yahoo"}
+	}
+	var chain []market.Provider
+	// A local directory always goes first when configured: it is explicit,
+	// free, instant, and the only place delisted names can come from.
+	if cfg.CSVDir != "" {
+		chain = append(chain, market.NewCSVProvider(cfg.CSVDir))
+	}
+	for _, name := range names {
+		switch name {
+		case "yahoo":
+			chain = append(chain, market.NewYahooProvider())
+		case "stooq":
+			chain = append(chain, market.NewStooqProvider())
+		case "csv":
+			if cfg.CSVDir == "" {
+				continue // already added above when configured
+			}
+		case "synthetic":
+			chain = append(chain, market.NewSyntheticProvider())
+		}
+	}
+	if len(chain) == 0 {
+		chain = append(chain, market.NewYahooProvider())
+	}
+	if len(chain) == 1 {
+		return chain[0]
+	}
+	return market.NewChain(chain...)
 }
 
 // RunOptions are the knobs a caller may set for a backtest.

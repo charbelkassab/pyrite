@@ -491,9 +491,22 @@ Everything has a sensible default. Override with environment variables or
 | `NQ_MAX_AI_CALLS` | `2000` | Per-run budget for `ai()` + `web()` |
 | `NQ_OFFLINE` | `false` | Synthetic data, no network |
 | `NQ_SEARCH_PROVIDER` | `duckduckgo` | `duckduckgo` or `none` |
+| `NQ_DATA_PROVIDERS` | `yahoo,stooq` | ordered fallback chain for market data |
+| `NQ_CSV_DIR` | — | a directory of `SYMBOL.csv` files, tried before any vendor |
 
-Market data comes from Yahoo Finance's public chart endpoint (no key required).
-See [docs/data-sources.md](docs/data-sources.md) for how to plug in a paid vendor.
+Market data comes from Yahoo Finance's public chart endpoint (no key required),
+with Stooq behind it. Free endpoints fail in a particular way — they work for
+most symbols and quietly 401 on a few — so the chain retries **only the symbols
+that failed** with the next vendor, rather than dropping those names from the
+universe and silently changing the backtest.
+
+Point `NQ_CSV_DIR` at a directory of `SYMBOL.csv` files to use your own data.
+The parser accepts what vendors actually emit — mixed-case headers, `Adj Close`
+or `adjclose`, ISO or US or unix dates — and falls back to the raw close when
+there is no adjusted column. This is also the only way to backtest **delisted
+securities**, which no free live endpoint serves.
+
+See [docs/data-sources.md](docs/data-sources.md) for more.
 
 ---
 

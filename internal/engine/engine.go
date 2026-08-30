@@ -274,11 +274,18 @@ func (e *Engine) Run(ctx context.Context) (*Result, error) {
 	started := time.Now()
 	e.ctx = ctx
 
-	if err := e.loadData(ctx); err != nil {
-		return nil, err
-	}
-	if len(e.days) == 0 {
-		return nil, fmt.Errorf("no trading days between %s and %s for the requested symbols", e.spec.Start, e.spec.End)
+	// An empty universe here is not yet an error: setup() has not run, and it
+	// may be about to choose one. The check is not skipped, only deferred to
+	// the pass below, which always runs.
+	loaded := false
+	if len(e.spec.Universe) > 0 {
+		if err := e.loadData(ctx); err != nil {
+			return nil, err
+		}
+		if len(e.days) == 0 {
+			return nil, fmt.Errorf("no trading days between %s and %s for the requested symbols", e.spec.Start, e.spec.End)
+		}
+		loaded = true
 	}
 
 	e.portfolio = NewPortfolio(e.spec.InitialCash, e.spec.Costs)
@@ -292,8 +299,30 @@ func (e *Engine) Run(ctx context.Context) (*Result, error) {
 	}
 	defer vm.Close()
 
+	// setup() may set the universe and the warm-up, which are exactly the two
+	// things loadData needed in order to run. So it runs once with whatever
+	// the spec carried, and again if setup() changed either.
+	//
+	// Without this second pass, ctx.universe([...]) in setup() is documented
+	// but inert: the data was already chosen, so a strategy that sets its own
+	// symbol list fails with "empty universe", and one that raises its own
+	// warm-up silently trades on too little history. The store caches, so a
+	// reload only fetches symbols that are genuinely new.
+	beforeUniverse := strings.Join(e.spec.Universe, ",")
+	beforeWarmup := e.spec.Warmup
 	if err := vm.callSetup(); err != nil {
 		return nil, fmt.Errorf("strategy setup() failed: %w", err)
+	}
+	if !loaded || strings.Join(e.spec.Universe, ",") != beforeUniverse || e.spec.Warmup != beforeWarmup {
+		// loadData reports an empty universe itself, which is the case a
+		// strategy that never names a symbol falls into.
+		if err := e.loadData(ctx); err != nil {
+			return nil, err
+		}
+		if len(e.days) == 0 {
+			return nil, fmt.Errorf("no trading days between %s and %s for the symbols setup() selected",
+				e.spec.Start, e.spec.End)
+		}
 	}
 
 	res := &Result{Spec: e.spec, SkippedSymbols: map[string]string{}}

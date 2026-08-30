@@ -60,6 +60,17 @@ type Config struct {
 	CacheOnly bool `json:"cache_only"`
 	// SearchProvider selects the web search backend: "duckduckgo" or "none".
 	SearchProvider string `json:"search_provider"`
+
+	// DataProviders is the ordered fallback chain for market data, e.g.
+	// "yahoo,stooq". A vendor that works for most symbols and quietly fails
+	// on a few is the normal case for free endpoints, and dropping those
+	// names silently changes the backtest — so the next vendor is tried for
+	// exactly the symbols that failed.
+	DataProviders []string `json:"data_providers"`
+	// CSVDir, when set, adds a local directory of per-symbol CSV files to the
+	// chain. It is the only source that can hold delisted securities, which
+	// no free live endpoint serves.
+	CSVDir string `json:"csv_dir,omitempty"`
 }
 
 // Defaults returns the built-in configuration.
@@ -104,6 +115,7 @@ func Defaults() *Config {
 		// finish in seconds, so the budget only needs to be generous once.
 		StrategyTimeoutSec: 3600,
 		SearchProvider:     "duckduckgo",
+		DataProviders:      []string{"yahoo", "stooq"},
 	}
 }
 
@@ -168,6 +180,20 @@ func (c *Config) applyEnv() {
 	}
 	if v := os.Getenv("NQ_DATA_DIR"); v != "" {
 		c.DataDir = v
+	}
+	if v := os.Getenv("NQ_DATA_PROVIDERS"); v != "" {
+		var names []string
+		for _, part := range strings.Split(v, ",") {
+			if part = strings.ToLower(strings.TrimSpace(part)); part != "" {
+				names = append(names, part)
+			}
+		}
+		if len(names) > 0 {
+			c.DataProviders = names
+		}
+	}
+	if v := strings.TrimSpace(os.Getenv("NQ_CSV_DIR")); v != "" {
+		c.CSVDir = v
 	}
 	if v := os.Getenv("NQ_SEARCH_PROVIDER"); v != "" {
 		c.SearchProvider = v

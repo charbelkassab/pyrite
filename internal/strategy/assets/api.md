@@ -55,7 +55,7 @@ if (fast === null) return;      // not enough data yet
 | Expression | Returns |
 | --- | --- |
 | `ctx.universe()` | array of symbols tradable today |
-| `ctx.universe([...])` | **setup() only** — set the tradable symbol list |
+| `ctx.universe([...])` | **setup() only** — set the tradable symbol list; the data for it is loaded before the first day |
 | `ctx.symbols()` | same as `ctx.universe()` |
 | `ctx.hasData(sym)` | whether the symbol has a price today |
 | `ctx.price(sym)` | today's split- and dividend-adjusted close |
