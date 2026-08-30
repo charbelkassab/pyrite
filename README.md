@@ -566,6 +566,29 @@ See [docs/data-sources.md](docs/data-sources.md) for more.
 
 ---
 
+## From Python
+
+```python
+from natural_quant import Client
+
+with Client.serve(offline=True) as nq:
+    run = nq.backtest(code=strategy, universe=["SPY"], start="2015-01-01")
+    run.curve.plot()
+    print(run.trades[["symbol", "net_pnl", "mae_pct", "mfe_pct"]])
+    for f in run.critique:
+        print(f["severity"], f["title"])
+
+    sw = nq.sweep(code=strategy, universe=["SPY"])
+    print(sw.surface("fast", "slow"))
+```
+
+`pip install natural-quant`. It is a client, not a reimplementation — the Go
+binary does the work, so the notebook and the CLI can never disagree about what
+a backtest means. pandas is optional: tables come back as DataFrames when it is
+installed and as lists of dicts when it is not. See [python/](python/).
+
+---
+
 ## Development
 
 ```bash

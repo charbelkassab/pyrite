@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "natural-quant"
+version = "0.1.0"
+description = "Python client for natural-quant: plain-English trading strategies, backtested honestly."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "Charbel Kassab" }]
+keywords = ["backtesting", "quant", "trading", "finance"]
+classifiers = [
+    "Intended Audience :: Financial and Insurance Industry",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Topic :: Office/Business :: Financial :: Investment",
+]
+# No required dependencies. The client is standard library only, so it works
+# in a bare interpreter; pandas upgrades tabular results to DataFrames when it
+# happens to be installed.
+dependencies = []
+
+[project.optional-dependencies]
+pandas = ["pandas>=1.3"]
+
+[project.urls]
+Homepage = "https://github.com/charbelkassab/natural-quant"
+Source = "https://github.com/charbelkassab/natural-quant"
+
+[tool.setuptools.packages.find]
+include = ["natural_quant*"]
