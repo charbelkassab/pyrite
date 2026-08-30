@@ -131,8 +131,16 @@ func DeclaredParams(ctx context.Context, spec Spec, store *market.Store) ([]Para
 	spec.ApplyDefaults()
 	spec.OmitDayRecords = true
 	e := New(spec, store)
-	if err := e.loadData(ctx); err != nil {
-		return nil, err
+	// An empty universe is not an error here, for the same reason it is not
+	// one in Run: setup() has not run yet, and declaring the universe is one
+	// of the things it is for. Loading unconditionally made every search
+	// command fail on --code-file with "empty universe: nothing to trade" —
+	// on a strategy that runs perfectly well — because the probe rejected it
+	// before the line that names the symbols had executed.
+	if len(spec.Universe) > 0 || spec.Index != "" {
+		if err := e.loadData(ctx); err != nil {
+			return nil, err
+		}
 	}
 	e.portfolio = NewPortfolio(spec.InitialCash, spec.Costs)
 	vm, err := newStrategyVM(e)

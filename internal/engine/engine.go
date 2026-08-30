@@ -703,6 +703,33 @@ func (e *Engine) recordAI(rec AICall) {
 	}
 }
 
+// resolveSetup runs setup() without any market data, purely so the spec picks
+// up whatever that function declares — the universe, the warm-up, the index.
+//
+// It exists because three entry points besides Run need the symbol list before
+// they can load anything, and the symbol list may only be named inside
+// setup(). Loading first and asking later made every one of them reject a
+// working strategy with "empty universe: nothing to trade".
+//
+// setup() is not given prices here, which is fine: its job is to declare, and
+// a strategy that reads the market from setup() has already stepped outside
+// what the API offers it.
+func (e *Engine) resolveSetup(ctx context.Context) error {
+	e.ctx = ctx
+	if e.portfolio == nil {
+		e.portfolio = NewPortfolio(e.spec.InitialCash, e.spec.Costs)
+	}
+	vm, err := newStrategyVM(e)
+	if err != nil {
+		return err
+	}
+	defer vm.Close()
+	if err := vm.callSetup(); err != nil {
+		return fmt.Errorf("strategy setup() failed: %w", err)
+	}
+	return nil
+}
+
 // loadData fetches every symbol the run needs and builds the trading calendar.
 func (e *Engine) loadData(ctx context.Context) error {
 	symbols := market.DedupeSymbols(e.spec.Universe)

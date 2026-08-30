@@ -264,3 +264,48 @@ func TestCallerGridsExpandInAStableOrder(t *testing.T) {
 		}
 	}
 }
+
+// Every search command has to work on a strategy whose universe is named
+// inside setup(), because that is the only way to write one when you are not
+// passing --universe on the command line. Regression: the probes each loaded
+// market data before running setup(), so the symbol list was still empty when
+// they checked it, and sweep, walkforward, improve and report all rejected a
+// strategy that ran perfectly well under `run` with:
+//
+//	error: the strategy has an empty universe: nothing to trade
+func TestSearchProbesRunSetupBeforeLoading(t *testing.T) {
+	const code = `
+		function setup(ctx) {
+			ctx.universe(["AAPL", "MSFT"]);
+			ctx.param("n", 10, { grid: [5, 10] });
+			ctx.warmup(20);
+		}
+		function onDay(ctx) {
+			if (!ctx.hasPosition("AAPL")) ctx.buy("AAPL", { pctCash: 0.5 });
+		}
+	`
+	spec := Spec{
+		Name: "declares-its-own-universe", Code: code,
+		Start: "2022-01-03", End: "2022-12-30",
+		InitialCash: 100000, AllowFractional: true,
+	}
+	store := newTestStore(t)
+
+	// The probe behind sweep.
+	decls, err := DeclaredParams(context.Background(), spec, store)
+	if err != nil {
+		t.Fatalf("DeclaredParams: %v", err)
+	}
+	if len(decls) != 1 || decls[0].Name != "n" {
+		t.Fatalf("expected the declared parameter n, got %+v", decls)
+	}
+
+	// The probe behind walkforward, improve and report.
+	days, err := TradingDays(context.Background(), spec, store)
+	if err != nil {
+		t.Fatalf("TradingDays: %v", err)
+	}
+	if len(days) == 0 {
+		t.Fatal("no trading days resolved for a universe setup() declared")
+	}
+}

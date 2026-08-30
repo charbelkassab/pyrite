@@ -100,6 +100,14 @@ func TradingDays(ctx context.Context, spec Spec, store *market.Store) ([]market.
 	spec.ApplyDefaults()
 	spec.OmitDayRecords = true
 	e := New(spec, store)
+	// The calendar is built from the symbols, and the symbols may only be
+	// named inside setup(), so it has to run before the load rather than
+	// after it.
+	if len(spec.Universe) == 0 && spec.Index == "" {
+		if err := e.resolveSetup(ctx); err != nil {
+			return nil, err
+		}
+	}
 	if err := e.loadData(ctx); err != nil {
 		return nil, err
 	}

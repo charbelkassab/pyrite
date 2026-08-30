@@ -109,6 +109,13 @@ the CLI flags may all move.
   orders arrive last: one example returned 17.16%, 16.21% and 16.35% on three
   consecutive runs over identical data. Single-symbol strategies were never
   affected. The `--param` path had the same bug in its grid merge.
+- **`sweep`, `walkforward`, `improve` and `report` all rejected a working
+  strategy passed with `--code-file`.** Each probes the spec before running
+  it, and each loaded market data before calling `setup()` — so the universe
+  was still empty when they checked it, and a strategy that names its symbols
+  in `setup()`, which is the only way to write one without `--universe`,
+  failed with "empty universe: nothing to trade". `run` had been fixed for
+  this; its three siblings had not.
 - A run that never placed an order scored 65/100 — above a real result with
   two flaws — because the score subtracts a fixed penalty per finding and an
   empty run trips fewer of them. "Never traded" now floors the score at zero.
