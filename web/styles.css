@@ -525,3 +525,132 @@ td.num, .metrics td:not(:first-child) { font-family: var(--mono); }
   .empty { padding: 32px 20px; }
   .empty h1 { font-size: 24px; }
 }
+
+/* ── parameter search ────────────────────────────────────── */
+
+.search-head {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+/* Without an explicit basis these selects inherit the full-width .input rule
+   and stack, which reads as three separate rows of form rather than one
+   control strip. */
+.search-head .input { flex: 0 0 auto; width: auto; min-width: 150px; max-width: 260px; }
+.search-hint { margin: 0 0 14px; max-width: 62ch; }
+
+/* The surface is the point of a search: a broad warm region is an edge, a
+   lone bright cell is a fluke, and the eye reads that instantly. */
+.surface-wrap { margin: 18px 0; overflow-x: auto; }
+.surface-grid {
+  display: grid;
+  gap: 2px;
+  width: max-content;
+  align-items: stretch;
+}
+.surface-cell {
+  min-width: 34px;
+  height: 30px;
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  cursor: default;
+  /* Set per cell in JS: the ramp runs from dark to light, so a single text
+     colour is unreadable at one end whichever one it is. */
+  color: rgba(255, 255, 255, .88);
+}
+.surface-cell.empty {
+  background: var(--surface-2, #1a1f26);
+  color: var(--muted, #7b8794);
+}
+.surface-cell.best { outline: 2px solid var(--fg, #e6edf3); outline-offset: -2px; }
+.surface-axis {
+  font-size: 11px;
+  color: var(--muted, #7b8794);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-variant-numeric: tabular-nums;
+}
+.surface-axis.y { justify-content: flex-end; padding-right: 6px; }
+.surface-label {
+  font-size: 11px;
+  color: var(--muted, #7b8794);
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  margin: 12px 0 6px;
+}
+.surface-scale {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--muted, #7b8794);
+  margin-top: 8px;
+  font-variant-numeric: tabular-nums;
+}
+.surface-scale .ramp {
+  display: flex;
+  height: 10px;
+  width: 140px;
+  border-radius: 2px;
+  overflow: hidden;
+}
+.surface-scale .ramp span { flex: 1; }
+
+/* Notes beside a statistic explain what it means. They are prose, so they
+   wrap and take the body face — the global table rule sets nowrap and mono,
+   which truncates them and makes them look like data. */
+.metrics td.note {
+  white-space: normal;
+  font-family: inherit;
+  color: var(--text-muted);
+  text-align: left;
+  font-size: 12px;
+  max-width: 34ch;
+  line-height: 1.45;
+}
+
+.verdict {
+  border-left: 3px solid var(--accent, #4a9eff);
+  padding: 10px 14px;
+  margin: 16px 0;
+  background: var(--surface-2, #161b22);
+  border-radius: 0 4px 4px 0;
+  line-height: 1.55;
+}
+.verdict strong { display: block; margin-bottom: 4px; }
+
+/* ── critique ────────────────────────────────────────────── */
+
+.trust-score {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+.trust-score b { font-size: 30px; font-variant-numeric: tabular-nums; }
+.finding {
+  border-left: 3px solid var(--muted, #7b8794);
+  padding: 8px 14px;
+  margin: 12px 0;
+  background: var(--surface-2, #161b22);
+  border-radius: 0 4px 4px 0;
+}
+.finding.critical { border-left-color: var(--neg, #e05252); }
+.finding.warning { border-left-color: var(--warn, #d69e2e); }
+.finding .sev {
+  font-size: 10px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--muted, #7b8794);
+}
+.finding.critical .sev { color: var(--neg, #e05252); }
+.finding.warning .sev { color: var(--warn, #d69e2e); }
+.finding h4 { margin: 2px 0 4px; font-size: 14px; }
+.finding p { margin: 0; line-height: 1.55; }

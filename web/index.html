@@ -86,6 +86,8 @@
         <button class="tab active" data-tab="overview" role="tab">Overview</button>
         <button class="tab" data-tab="day" role="tab">Day detail</button>
         <button class="tab" data-tab="trades" role="tab">Trades</button>
+        <button class="tab" data-tab="search" role="tab">Search</button>
+        <button class="tab" data-tab="trust" role="tab">Trust</button>
         <button class="tab" data-tab="code" role="tab">Code</button>
         <button class="tab" data-tab="notes" role="tab">Notes</button>
       </div>
@@ -105,6 +107,27 @@
       <section class="tabpanel" id="tab-trades" hidden>
         <div class="table-scroll">
           <table class="trades" id="tradesTable"></table>
+        </div>
+      </section>
+
+      <section class="tabpanel" id="tab-search" hidden>
+        <div class="search-head">
+          <select id="searchStrategy" class="input" aria-label="Strategy to search"></select>
+          <select id="searchObjective" class="input" aria-label="Rank by"></select>
+          <label class="check"><input type="checkbox" id="searchWalkForward"> Walk-forward</label>
+          <button class="btn btn-primary btn-sm" id="btnRunSearch">Search</button>
+        </div>
+        <p class="muted search-hint" id="searchHint">
+          A single backtest tells you how one configuration did. A search tells you
+          whether the idea works or whether that one number fitted the sample.
+        </p>
+        <div id="searchProgress" class="progress" hidden><div class="progress-bar" id="searchBar"></div></div>
+        <div id="searchBody"></div>
+      </section>
+
+      <section class="tabpanel" id="tab-trust" hidden>
+        <div id="trustBody" class="notes">
+          <p class="muted">Run a strategy to see what is wrong with the result.</p>
         </div>
       </section>
 

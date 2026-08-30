@@ -756,6 +756,13 @@ function applyRunResult(view, run) {
   view.fills = res.fills || [];
   view.warnings = res.warnings || [];
   view.usedAI = (res.ai_call_count || 0) > 0;
+  view.critique = res.critique || null;
+  view.trades = res.trades || [];
+  view.tradeStats = res.trade_stats || null;
+  view.risk = res.risk || null;
+  view.attribution = res.attribution || null;
+  renderSearchStrategies();
+  if (state.activeTab === 'trust') renderTrust();
 
   for (const b of res.benchmarks || []) {
     if (state.views.some((v) => v.kind === 'symbol' && v.symbol === b.symbol)) continue;
@@ -1518,6 +1525,8 @@ function switchTab(name) {
   for (const t of document.querySelectorAll('.tab')) t.classList.toggle('active', t.dataset.tab === name);
   for (const p of document.querySelectorAll('.tabpanel')) p.hidden = p.id !== `tab-${name}`;
   if (name === 'day') renderDayDetail();
+  if (name === 'search') { loadObjectives(); renderSearchStrategies(); renderSearch(); }
+  if (name === 'trust') renderTrust();
 }
 
 /* ── symbol autocomplete ─────────────────────────────────── */
@@ -1617,6 +1626,17 @@ function init() {
 
   for (const t of document.querySelectorAll('.tab')) t.onclick = () => switchTab(t.dataset.tab);
 
+  $('btnRunSearch').onclick = () => { runSearch().catch(() => {}); };
+  // Walk-forward and a plain sweep answer different questions, so the hint
+  // changes with the switch rather than describing whichever one is off.
+  $('searchWalkForward').onchange = () => {
+    $('searchHint').textContent = $('searchWalkForward').checked
+      ? 'Parameters are chosen on each training window and reported on the window that follows, '
+        + 'which is the only arrangement whose numbers mean what a reader assumes they mean.'
+      : 'A single backtest tells you how one configuration did. A search tells you whether the '
+        + 'idea works or whether that one number fitted the sample.';
+  };
+
   $('codeSelect').onchange = showCode;
   $('btnCopyCode').onclick = async () => {
     try {
@@ -1700,3 +1720,402 @@ async function applyDeepLink(params) {
 }
 
 document.addEventListener('DOMContentLoaded', init);
+
+/* ── parameter search ────────────────────────────────────── */
+
+// A search is many backtests over one strategy's declared parameters. The
+// point is not to find the best cell: it is to find out whether the best cell
+// means anything, which a single backtest structurally cannot say.
+
+const searchState = { result: null, kind: null, running: false, objectives: [] };
+
+async function loadObjectives() {
+  if (searchState.objectives.length) return;
+  try {
+    const r = await api('/api/objectives');
+    searchState.objectives = r.objectives || [];
+  } catch {
+    searchState.objectives = ['sharpe', 'cagr', 'calmar', 'total_return'];
+  }
+  const sel = $('searchObjective');
+  sel.textContent = '';
+  for (const o of searchState.objectives) {
+    const opt = el('option', '', o.replace(/_/g, ' '));
+    opt.value = o;
+    if (o === 'sharpe') opt.selected = true;
+    sel.appendChild(opt);
+  }
+}
+
+function renderSearchStrategies() {
+  const sel = $('searchStrategy');
+  const prev = sel.value;
+  sel.textContent = '';
+  const strategies = state.views.filter((v) => v.kind === 'strategy' && v.plan);
+  for (const v of strategies) {
+    const opt = el('option', '', v.label);
+    opt.value = v.id;
+    sel.appendChild(opt);
+  }
+  if (prev && strategies.some((v) => String(v.id) === prev)) sel.value = prev;
+  $('btnRunSearch').disabled = !strategies.length || searchState.running;
+  if (!strategies.length) {
+    $('searchBody').textContent = '';
+    $('searchBody').appendChild(el('p', 'muted',
+      'Run a strategy first, then search the space around it.'));
+  }
+}
+
+async function runSearch() {
+  const view = state.views.find((v) => String(v.id) === $('searchStrategy').value);
+  if (!view || !view.plan) return;
+
+  const walkForward = $('searchWalkForward').checked;
+  searchState.running = true;
+  searchState.result = null;
+  searchState.kind = walkForward ? 'walkforward' : 'sweep';
+  $('btnRunSearch').disabled = true;
+  $('searchProgress').hidden = false;
+  $('searchBar').style.width = '0%';
+  $('searchBody').textContent = '';
+
+  const body = {
+    code: view.plan.code,
+    name: view.label,
+    universe: view.plan.universe || [],
+    warmup: view.plan.warmup || 0,
+    allow_short: !!view.plan.allow_short,
+    objective: $('searchObjective').value,
+    walk_forward: walkForward,
+    ...runOptions(),
+  };
+
+  try {
+    const { id } = await api('/api/sweeps', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    await streamSearch(id);
+  } catch (e) {
+    $('searchBody').textContent = '';
+    $('searchBody').appendChild(el('p', 'error', shortReason(String(e && e.message || e))));
+  } finally {
+    searchState.running = false;
+    $('searchProgress').hidden = true;
+    $('btnRunSearch').disabled = false;
+  }
+}
+
+// streamSearch follows the same SSE contract a backtest uses, so a long
+// search reports progress rather than appearing to hang.
+function streamSearch(id) {
+  return new Promise((resolve) => {
+    const es = new EventSource(`/api/runs/${id}/events`);
+    const finish = () => { es.close(); resolve(); };
+
+    es.onmessage = (ev) => {
+      let msg;
+      try { msg = JSON.parse(ev.data); } catch { return; }
+      const run = msg.run;
+      if (!run) return;
+
+      if (msg.type === 'progress' || msg.type === 'status') {
+        $('searchBar').style.width = `${run.progress || 0}%`;
+        return;
+      }
+      if (msg.type === 'error') {
+        $('searchBody').textContent = '';
+        $('searchBody').appendChild(el('p', 'error', run.error || 'the search failed'));
+        finish();
+        return;
+      }
+      if (msg.type === 'done') {
+        searchState.result = run.sweep || run.walk_forward || null;
+        searchState.kind = run.walk_forward ? 'walkforward' : 'sweep';
+        renderSearch();
+        finish();
+      }
+    };
+    es.onerror = finish;
+  });
+}
+
+function renderSearch() {
+  const body = $('searchBody');
+  body.textContent = '';
+  const res = searchState.result;
+  if (!res) return;
+  if (searchState.kind === 'walkforward') renderWalkForward(body, res);
+  else renderSweep(body, res);
+}
+
+function renderSweep(body, res) {
+  const head = el('p', 'muted',
+    `${res.combos} combinations in ${(res.elapsed_ms / 1000).toFixed(1)}s, ranked by ${res.objective}`);
+  body.appendChild(head);
+
+  if ((res.axes || []).length >= 2) {
+    body.appendChild(surfaceFor(res, res.axes[0], res.axes[1]));
+  }
+  body.appendChild(robustnessPanel(res.robustness, res.objective));
+
+  const rows = [...res.rows].sort((a, b) => {
+    const av = a.score === null, bv = b.score === null;
+    if (av !== bv) return av ? 1 : -1;
+    return b.score - a.score;
+  });
+
+  body.appendChild(el('div', 'surface-label', 'Every combination'));
+  const wrap = el('div', 'table-scroll');
+  const t = el('table', 'metrics');
+  const h = t.insertRow();
+  for (const c of ['Parameters', res.objective, 'Return', 'Drawdown', 'Trades', 'Win %']) {
+    h.appendChild(el('th', '', c));
+  }
+  for (const r of rows.slice(0, 60)) {
+    const tr = t.insertRow();
+    tr.appendChild(el('td', '', r.label));
+    if (r.error) {
+      const td = el('td', 'muted', r.error);
+      td.colSpan = 5;
+      tr.appendChild(td);
+      continue;
+    }
+    tr.appendChild(el('td', 'num', fmtNum(r.score, 3)));
+    const ret = el('td', `num ${signClass(r.total_return)}`, fmtPct(r.total_return));
+    tr.appendChild(ret);
+    tr.appendChild(el('td', 'num neg', fmtPct(r.max_drawdown)));
+    tr.appendChild(el('td', 'num', String(r.trades)));
+    tr.appendChild(el('td', 'num', fmtPct(r.win_rate)));
+  }
+  wrap.appendChild(t);
+  body.appendChild(wrap);
+}
+
+// surfaceFor builds the heatmap.
+//
+// This is the fastest overfitting detector in the tool. A broad warm region
+// means the idea survives being specified slightly differently; one bright
+// cell in a dark field means the number came from the search, not the market.
+function surfaceFor(res, xAxis, yAxis) {
+  const xs = res.grids[xAxis] || [];
+  const ys = res.grids[yAxis] || [];
+  const wrap = el('div', 'surface-wrap');
+  if (!xs.length || !ys.length) return wrap;
+
+  // Hold the other parameters at whatever the best row used: that is the
+  // slice through the space the reported winner actually lives on.
+  const scored = res.rows.filter((r) => !r.error && r.score !== null);
+  if (!scored.length) return wrap;
+  const best = scored.reduce((a, b) => (b.score > a.score ? b : a));
+
+  const same = (a, b) => String(a) === String(b) || Number(a) === Number(b);
+  const cellFor = (x, y) => scored.find((r) => {
+    if (!same(r.params[xAxis], x) || !same(r.params[yAxis], y)) return false;
+    return (res.axes || []).every((ax) =>
+      ax === xAxis || ax === yAxis || same(r.params[ax], best.params[ax]));
+  });
+
+  let lo = Infinity, hi = -Infinity;
+  for (const r of scored) { lo = Math.min(lo, r.score); hi = Math.max(hi, r.score); }
+  if (!(hi > lo)) return wrap;
+
+  wrap.appendChild(el('div', 'surface-label', `${xAxis} across, ${yAxis} down`));
+
+  const grid = el('div', 'surface-grid');
+  grid.style.gridTemplateColumns = `auto repeat(${xs.length}, minmax(34px, 1fr))`;
+  grid.appendChild(el('div', 'surface-axis'));
+  for (const x of xs) grid.appendChild(el('div', 'surface-axis', String(x)));
+
+  for (const y of ys) {
+    grid.appendChild(el('div', 'surface-axis y', String(y)));
+    for (const x of xs) {
+      const r = cellFor(x, y);
+      if (!r) {
+        grid.appendChild(el('div', 'surface-cell empty', '·'));
+        continue;
+      }
+      const t = (r.score - lo) / (hi - lo);
+      const cell = el('div', 'surface-cell', r.score.toFixed(2));
+      cell.style.background = heatColor(t);
+      // The ramp lightens as it rises, so the label has to darken with it or
+      // the best cells — the ones anyone actually reads — become invisible.
+      if (t > 0.55) cell.style.color = 'rgba(10, 16, 22, .88)';
+      cell.title = `${r.label}\n${res.objective} ${fmtNum(r.score, 3)}\n` +
+        `return ${fmtPct(r.total_return)}  drawdown ${fmtPct(r.max_drawdown)}  ${r.trades} trades`;
+      if (r === best) cell.classList.add('best');
+      grid.appendChild(cell);
+    }
+  }
+  wrap.appendChild(grid);
+
+  const scale = el('div', 'surface-scale');
+  scale.appendChild(el('span', '', fmtNum(lo, 2)));
+  const ramp = el('div', 'ramp');
+  for (let i = 0; i < 24; i++) {
+    const s = el('span');
+    s.style.background = heatColor(i / 23);
+    ramp.appendChild(s);
+  }
+  scale.appendChild(ramp);
+  scale.appendChild(el('span', '', fmtNum(hi, 2)));
+  wrap.appendChild(scale);
+  return wrap;
+}
+
+// heatColor maps 0..1 onto a perceptually monotonic dark-to-warm ramp, which
+// reads correctly in both themes and does not rely on hue alone.
+function heatColor(t) {
+  const c = Math.max(0, Math.min(1, t));
+  const h = 250 - 210 * c;          // deep blue through to warm amber
+  const l = 22 + 40 * c;
+  const s = 45 + 30 * c;
+  return `hsl(${h}, ${s}%, ${l}%)`;
+}
+
+function robustnessPanel(r, objective) {
+  const box = el('div');
+  if (!r) return box;
+  box.appendChild(el('div', 'surface-label', 'How much of this is real?'));
+
+  const wrap = el('div', 'table-scroll');
+  const t = el('table', 'metrics');
+  const row = (label, value, note) => {
+    const tr = t.insertRow();
+    tr.appendChild(el('td', '', label));
+    tr.appendChild(el('td', 'num', value));
+    tr.appendChild(el('td', 'note', note || ''));
+  };
+  row(`Best ${objective}`, fmtNum(r.best_score, 3), '');
+  row(`Median ${objective}`, fmtNum(r.median_score, 3), '');
+  if (r.expected_max_score) {
+    row('Expected best from luck alone', fmtNum(r.expected_max_score, 3),
+      'what the top of this many trials scores with no skill at all');
+  }
+  row('Combinations above zero', fmtPct(r.positive_share), '');
+  if (r.plateau_ratio !== null && r.plateau_ratio !== undefined) {
+    row('Neighbour support', fmtPct(r.plateau_ratio),
+      'how well the cells next to the winner scored');
+  }
+  if (r.pbo !== null && r.pbo !== undefined) {
+    row('Probability of overfitting', fmtPct(r.pbo),
+      `${r.pbo_splits} train/test splits; 50% is a coin flip`);
+  }
+  if (r.deflated_sharpe !== null && r.deflated_sharpe !== undefined) {
+    row('Deflated Sharpe', fmtPct(r.deflated_sharpe),
+      'confidence the edge survives the number of trials');
+  }
+  wrap.appendChild(t);
+  box.appendChild(wrap);
+
+  if (r.verdict) {
+    const v = el('div', 'verdict');
+    v.appendChild(el('strong', '', 'Verdict'));
+    v.appendChild(document.createTextNode(r.verdict));
+    box.appendChild(v);
+  }
+  return box;
+}
+
+function renderWalkForward(body, res) {
+  body.appendChild(el('p', 'muted',
+    `${res.folds.length} folds, parameters chosen on each training window and reported on the test window that follows it`));
+
+  const m = res.stitched_metrics || {};
+  const sum = el('div', 'table-scroll');
+  const st = el('table', 'metrics');
+  const srow = (l, v, cls) => {
+    const tr = st.insertRow();
+    tr.appendChild(el('td', '', l));
+    tr.appendChild(el('td', `num ${cls || ''}`, v));
+  };
+  srow('Out-of-sample total return', fmtPct(m.total_return), signClass(m.total_return));
+  srow('Out-of-sample CAGR', fmtPct(m.cagr), signClass(m.cagr));
+  srow('Out-of-sample Sharpe', fmtNum(m.sharpe, 2));
+  srow('Out-of-sample max drawdown', fmtPct(m.max_drawdown), 'neg');
+  srow('Mean in-sample return', fmtPct(res.in_sample_return));
+  srow('Mean out-of-sample return', fmtPct(res.out_of_sample_return));
+  if (res.efficiency !== null && res.efficiency !== undefined) {
+    srow('Walk-forward efficiency', fmtPct(res.efficiency));
+  }
+  srow('Positive test windows', `${res.consistent_folds} / ${res.folds.length}`);
+  srow('Parameter stability', fmtPct(res.param_stability));
+  sum.appendChild(st);
+  body.appendChild(el('div', 'surface-label',
+    'Stitched out-of-sample equity — the only curve here that was never fitted to'));
+  body.appendChild(sum);
+
+  if (res.verdict) {
+    const v = el('div', 'verdict');
+    v.appendChild(el('strong', '', 'Verdict'));
+    v.appendChild(document.createTextNode(res.verdict));
+    body.appendChild(v);
+  }
+
+  body.appendChild(el('div', 'surface-label', 'Fold by fold'));
+  const wrap = el('div', 'table-scroll');
+  const t = el('table', 'metrics');
+  const h = t.insertRow();
+  for (const c of ['Test window', 'Chosen', 'In-sample', 'Out-of-sample']) h.appendChild(el('th', '', c));
+  for (const f of res.folds) {
+    const tr = t.insertRow();
+    tr.appendChild(el('td', '', `${f.test_start} → ${f.test_end}`));
+    if (f.error) {
+      const td = el('td', 'muted', f.error);
+      td.colSpan = 3;
+      tr.appendChild(td);
+      continue;
+    }
+    tr.appendChild(el('td', '', paramLabel(f.best_params)));
+    tr.appendChild(el('td', `num ${signClass(f.train_metrics.total_return)}`, fmtPct(f.train_metrics.total_return)));
+    tr.appendChild(el('td', `num ${signClass(f.test_metrics.total_return)}`, fmtPct(f.test_metrics.total_return)));
+  }
+  wrap.appendChild(t);
+  body.appendChild(wrap);
+}
+
+function paramLabel(params) {
+  if (!params) return '';
+  return Object.keys(params).sort().map((k) => `${k}=${params[k]}`).join(' ');
+}
+
+/* ── critique ────────────────────────────────────────────── */
+
+// Every result carries an assessment of itself. It is shown by default rather
+// than tucked behind a control: a backtesting tool that oversells itself is
+// worse than useless, and this is that principle made visible.
+function renderTrust() {
+  const body = $('trustBody');
+  body.textContent = '';
+  const strategies = state.views.filter(
+    (v) => v.kind === 'strategy' && v.critique && v.visible !== false);
+
+  if (!strategies.length) {
+    body.appendChild(el('p', 'muted', 'Run a strategy to see what is wrong with the result.'));
+    return;
+  }
+
+  for (const v of strategies) {
+    const c = v.critique;
+    const head = el('div', 'trust-score');
+    const dot = el('span', 'series-dot');
+    dot.style.background = v.color;
+    head.appendChild(dot);
+    head.appendChild(el('b', '', `${c.trust_score}`));
+    head.appendChild(el('span', 'muted', `/ 100 — ${v.label}`));
+    body.appendChild(head);
+
+    if (!c.findings || !c.findings.length) {
+      body.appendChild(el('p', 'muted', c.headline || 'nothing flagged'));
+      continue;
+    }
+    for (const f of c.findings) {
+      const d = el('div', `finding ${f.severity}`);
+      d.appendChild(el('div', 'sev', f.severity));
+      d.appendChild(el('h4', '', f.title));
+      d.appendChild(el('p', '', f.detail));
+      body.appendChild(d);
+    }
+  }
+}
