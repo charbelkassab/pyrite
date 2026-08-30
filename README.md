@@ -22,7 +22,7 @@ an equity curve *and* the specific reasons not to believe it.
 [Python](#from-python) ·
 [Limitations](#limitations-please-read)
 
-![pyrite comparing a trend-following strategy against the S&P 500](docs/images/screenshot-chart.png)
+![Two strategies charted against the S&P 500, with the metrics table below](docs/images/screenshot-chart.png)
 
 </div>
 
@@ -267,6 +267,8 @@ How much of this is real?
   this sample carries no information about the next one
 ```
 
+![The parameter surface, the robustness statistics and the verdict](docs/images/screenshot-search.png)
+
 A heatmap is the fastest overfitting detector ever built. One bright cell in a
 dark field is a fluke; a broad warm region is an edge. The statistics put
 numbers on what the eye already sees:
@@ -368,6 +370,8 @@ How much should you believe this?  20/100
   warn the return is concentrated in a few sessions
         50% of the total gain disappears when excluding the 5 best days.
 ```
+
+![The Trust tab, listing what is wrong with a result and why](docs/images/screenshot-trust.png)
 
 These findings are computed, not asked of a model. They cost nothing, work
 with no API key, and cannot invent a number. It detects lookahead fills,

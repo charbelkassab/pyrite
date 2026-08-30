@@ -44,18 +44,29 @@ PYRITE_CORPUS_FILTER=pairs PYRITE_LIVE_TESTS=1 go test ./internal/strategy/ -run
 
 It uses real API calls, so it is opt-in and never runs in normal `go test ./...`.
 
-### 2. Corrections to the share-count table
+### 2. Corrections to the reference data
 
-[`internal/market/assets/shares_outstanding.csv`](internal/market/assets/shares_outstanding.csv)
-is approximate reference data, and its accuracy directly determines whether
-"the biggest company by market cap" is right on any given day.
+Two tables decide whether a backtest is describing the market or a distortion
+of it, and a wrong figure in either makes every run that touches it wrong by
+the same amount, silently.
 
-If you can correct a figure **with a citation** — a 10-K cover page, a 10-Q, or an
-official investor-relations page — that is a direct, permanent improvement to
-every market-cap strategy. Please include the source in the pull request.
+**Share counts** —
+[`internal/market/assets/shares_outstanding.csv`](internal/market/assets/shares_outstanding.csv),
+generated from SEC filings by `pyrite ingest edgar`. Regenerating it is one
+command; the valuable contribution is a symbol whose filings the ingester gets
+wrong, or a multi-class filer where the weighted-average fallback is materially
+off.
 
-Adding a company that has plausibly been top-20 by market cap and is missing is
-equally welcome.
+**Index membership** —
+[`internal/market/assets/sp500_membership.csv`](internal/market/assets/sp500_membership.csv),
+reconstructed from Wikipedia's change log by `pyrite ingest index`. Wikipedia
+is checkable but not authoritative, and the log thins out the further back it
+goes. A correction with an S&P announcement behind it is worth a lot. So is a
+membership table for another index — the machinery is index-agnostic and only
+the S&P 500 has one.
+
+**A citation is what makes either actionable.** A filing, an announcement, an
+exchange notice. Not a screenshot of a data vendor.
 
 ### 3. Additions to the strategy API
 
@@ -66,19 +77,45 @@ coherent rather than accumulating one-offs.
 
 ### 4. Data providers
 
-`market.Provider` is a three-method interface. An implementation for a vendor
-people actually subscribe to (Tiingo, Polygon, FMP, Alpaca) would be genuinely
-useful. See [docs/data-sources.md](docs/data-sources.md).
+`market.Provider` is a three-method interface, and `market.Chain` already
+handles falling through per symbol when one vendor fails. An implementation for
+a vendor people actually subscribe to (Tiingo, Polygon, FMP, Alpaca) would be
+genuinely useful. See [docs/data-sources.md](docs/data-sources.md).
+
+The one nobody has done and everybody needs: **prices for delisted securities.**
+Point-in-time index membership is only half of survivorship bias — the other
+half is that a company which stopped trading has no price history at any free
+vendor, so it resolves to a per-symbol data error rather than the loss it
+actually produced. A provider that serves those would close the gap.
+
+### 5. Somewhere to start
+
+If you want to contribute and have no particular itch:
+
+- **Add an indicator.** `internal/engine/indicators2.go` shows the shape: input
+  oldest-to-newest, output for the latest bar, `NaN` when history is short, and
+  a test that checks the defining property rather than a fixed number.
+- **Add a bundled strategy.** A `.js` file in `examples/` with header
+  directives is automatically embedded, listed by `pyrite examples`, runnable
+  with `--example`, and covered by the test that every example must trade at
+  the widest setting of its own grids.
+- **Take a prompt from the corpus that fails** and make it pass.
 
 ## Getting set up
 
 ```bash
 git clone https://github.com/charbelkassab/pyrite
 cd pyrite
-go test ./...                          # no network or API keys needed
-go build -o pyrite ./cmd/pyrite
-./pyrite serve --dev ./web      # live front-end editing
+
+make check          # gofmt, vet and the full suite — no network, no API keys
+make smoke          # what a new user does in their first five minutes
+make test-python    # the Python client, against a real server
+make dev            # serve with live front-end editing
 ```
+
+Everything above works with no API key and no network. A key is needed only to
+compile plain English, and `pyrite doctor` will tell you how to get one for
+free.
 
 The front end is embedded with `go:embed`. In a normal build, editing `web/app.js`
 does nothing until you rebuild — `--dev ./web` serves it from disk instead. This
@@ -123,6 +160,9 @@ model calls multiplies a user's bill by the length of their backtest. Cache
 aggressively and keep the per-run budget enforced.
 
 ## Pull requests
+
+`make check` before you open one, and CI runs the same thing across Linux,
+macOS and Windows plus a smoke test of the commands a new user actually types.
 
 Small and focused beats large and sweeping. Describe what changed and why, and
 mention anything you deliberately left out. If it changes behaviour a user could

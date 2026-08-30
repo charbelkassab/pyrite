@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>pyrite — backtest trading strategies written in plain English</title>
-<meta name="description" content="Describe a trading strategy in plain English. pyrite turns it into code, backtests it on real market data, and charts it against any stock, index or other strategy.">
+<title>pyrite — most backtests are fool's gold</title>
+<meta name="description" content="A backtester that spends as much effort trying to disprove your strategy as it does running it. Describe an idea in plain English and get back an equity curve and the specific reasons not to believe it.">
 <link rel="stylesheet" href="/styles.css">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📈</text></svg>">
 <script src="/vendor/lightweight-charts.standalone.production.js"></script>
@@ -25,11 +25,16 @@
   <main class="stage">
 
     <div id="emptyState" class="empty">
-      <h1>Describe a trading strategy. Watch how it would have done.</h1>
+      <h1>Describe a trading strategy. Find out whether to believe the result.</h1>
       <p>
         Add a <strong>view</strong> on the right — a strategy written in plain English,
         or any stock, index or ETF. Everything you add is charted on the same scale so
         you can compare it directly.
+      </p>
+      <p>
+        Every strategy comes back with a <strong>Trust</strong> tab saying what is wrong
+        with it, and a <strong>Search</strong> tab that runs the whole parameter space
+        so you can see whether the result is an edge or a lucky cell.
       </p>
       <div class="empty-examples" id="emptyExamples"></div>
     </div>
