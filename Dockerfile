@@ -10,7 +10,7 @@
 #     -v pyrite-data:/data \
 #     pyrite serve --addr 0.0.0.0:8080
 
-FROM golang:1.25-alpine AS build
+FROM golang:1.27-alpine AS build
 WORKDIR /src
 
 # Dependencies first, so a source-only change reuses the module cache.
