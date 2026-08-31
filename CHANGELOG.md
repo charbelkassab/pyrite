@@ -109,6 +109,15 @@ the CLI flags may all move.
   orders arrive last: one example returned 17.16%, 16.21% and 16.35% on three
   consecutive runs over identical data. Single-symbol strategies were never
   affected. The `--param` path had the same bug in its grid merge.
+- **A strategy could write files outside its sandbox.** The response cache
+  used its key directly as a file path, and `websearch` builds that key from
+  the search query — which comes from strategy code. `ctx.news()` or
+  `ctx.web()` with a traversal in the query wrote a JSON file wherever it
+  landed. Strategies are given no filesystem access on purpose, since the
+  whole design runs generated code; the cache was quietly handing one back.
+  Keys are now hashed before they become paths, which also fixes a panic on
+  keys shorter than two characters. Existing cached entries are invalidated
+  and simply repopulate.
 - **`sweep`, `walkforward`, `improve` and `report` all rejected a working
   strategy passed with `--code-file`.** Each probes the spec before running
   it, and each loaded market data before calling `setup()` — so the universe

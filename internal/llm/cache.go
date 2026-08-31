@@ -61,10 +61,28 @@ func cacheKey(provider, model string, req Request) string {
 	return hex.EncodeToString(h.Sum(nil))
 }
 
+// safeName reduces an arbitrary cache key to a fixed-length hex name.
+//
+// The key is not always a hash. websearch builds one from the search query,
+// which comes from strategy code — so before this existed, a strategy could
+// call ctx.news("../../../../etc/whatever") and the key went into
+// filepath.Join unaltered, writing a JSON file wherever the traversal landed.
+// A strategy has no filesystem access by design; the cache was handing it
+// one, and the sandbox is the reason anyone can run untrusted generated code
+// here at all.
+//
+// Hashing also fixes the lesser bug that a key shorter than two characters
+// panicked when it was sliced for the shard directory.
+func safeName(key string) string {
+	sum := sha256.Sum256([]byte(key))
+	return hex.EncodeToString(sum[:])
+}
+
 func (c *Cache) path(key string) string {
+	name := safeName(key)
 	// Shard by the first two hex characters to keep directory sizes sane;
 	// a long backtest can produce thousands of entries.
-	return filepath.Join(c.dir, key[:2], key+".json")
+	return filepath.Join(c.dir, name[:2], name+".json")
 }
 
 type cacheEntry struct {
