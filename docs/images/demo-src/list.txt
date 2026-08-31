@@ -1,0 +1,10 @@
+file 'f1.png'
+duration 3.0
+file 'f2.png'
+duration 4.0
+file 'f3.png'
+duration 4.0
+file 'f4.png'
+duration 4.5
+file 'f4.png'
+duration 0.5

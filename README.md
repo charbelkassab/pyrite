@@ -23,7 +23,7 @@ curve *and* the specific reasons not to believe it.
 
 <br>
 
-![Two strategies charted against the S&P 500, with the metrics table below](docs/images/screenshot-chart.png)
+![The same strategy run four ways: a strong backtest, its own critique, a parameter sweep, and the walk-forward that shows it was fitted](docs/images/demo.gif)
 
 </div>
 
@@ -647,6 +647,8 @@ model.
 
 The **Trust** tab lists what is wrong with each result. The **Search** tab runs
 the parameter space and draws the surface.
+
+![Two strategies charted against the S&P 500, with the metrics table below](docs/images/screenshot-chart.png)
 
 ![The Trust tab, listing what is wrong with a result and why](docs/images/screenshot-trust.png)
 
