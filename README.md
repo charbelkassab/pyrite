@@ -127,7 +127,7 @@ service, no database. It runs on your laptop and writes to `~/.pyrite`.
 
 ## Install
 
-**Prebuilt binary** — [the latest release](https://github.com/charbelkassab/pyrite/releases/latest),
+**Prebuilt binary** — [releases](https://github.com/charbelkassab/pyrite/releases),
 for Linux, macOS and Windows. Verify against `SHA256SUMS`.
 
 **Go** (needs [Go 1.25+](https://go.dev/dl/)):
