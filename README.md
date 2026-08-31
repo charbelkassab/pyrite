@@ -10,8 +10,6 @@ curve *and* the specific reasons not to believe it.
 
 [![CI](https://github.com/charbelkassab/pyrite/actions/workflows/ci.yml/badge.svg)](https://github.com/charbelkassab/pyrite/actions/workflows/ci.yml)
 [![Go Reference](https://pkg.go.dev/badge/github.com/charbelkassab/pyrite.svg)](https://pkg.go.dev/github.com/charbelkassab/pyrite)
-[![Go Report Card](https://goreportcard.com/badge/github.com/charbelkassab/pyrite)](https://goreportcard.com/report/github.com/charbelkassab/pyrite)
-[![Release](https://img.shields.io/github/v/release/charbelkassab/pyrite?sort=semver)](https://github.com/charbelkassab/pyrite/releases)
 [![Licence: MIT](https://img.shields.io/badge/licence-MIT-blue.svg)](LICENSE)
 
 [**Try it**](#try-it-in-30-seconds) ·
@@ -138,7 +136,7 @@ for Linux, macOS and Windows. Verify against `SHA256SUMS`.
 go install github.com/charbelkassab/pyrite/cmd/pyrite@latest
 ```
 
-**Docker** — a 27 MB image, non-root, no external services:
+**Docker** — a 29 MB image, non-root, no external services:
 
 ```bash
 docker run --rm -p 8080:8080 ghcr.io/charbelkassab/pyrite \
