@@ -821,7 +821,9 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Licence
 
-MIT. See [LICENSE](LICENSE) and [NOTICE](NOTICE) for third-party components.
+MIT for the code. See [LICENSE](LICENSE) and [NOTICE](NOTICE) for third-party
+components — note that the bundled S&P 500 membership table is derived from
+Wikipedia and carries CC BY-SA 4.0 separately from the code licence.
 
 pyrite is a research and education tool. It is not investment advice, it is not
 a broker, and it will not place a real order. Nothing here is a recommendation

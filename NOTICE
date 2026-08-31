@@ -25,5 +25,28 @@ endpoint. That data is not redistributed with this project and remains subject
 to Yahoo's terms of use. Users are responsible for their own compliance.
 
 The bundled share-count table (internal/market/assets/shares_outstanding.csv)
-is approximate reference data compiled for this project from public filings and
-company disclosures. See the header of that file for its accuracy caveats.
+is compiled from the U.S. Securities and Exchange Commission's XBRL
+"company facts" API. SEC EDGAR filings are works of the United States
+government and are not subject to copyright. Each row cites the accession
+number of the filing it came from. See the header of that file for its
+accuracy caveats.
+
+The bundled index-membership table (internal/market/assets/sp500_membership.csv)
+is a derived database reconstructed from the "List of S&P 500 companies"
+article on the English Wikipedia, including its recorded list of index
+changes:
+
+    https://en.wikipedia.org/wiki/List_of_S%26P_500_companies
+
+That article is licensed under the Creative Commons Attribution-ShareAlike 4.0
+International License (CC BY-SA 4.0):
+
+    https://creativecommons.org/licenses/by-sa/4.0/
+
+The table in this repository is a derivative of it and is made available under
+the same CC BY-SA 4.0 terms, separately from the MIT licence that covers the
+source code. Regenerate it with `pyrite ingest index`.
+
+"S&P 500" is a registered trademark of S&P Dow Jones Indices LLC. This project
+is not affiliated with, endorsed by, or sponsored by S&P Dow Jones Indices, and
+uses the name only to describe what the data refers to.
