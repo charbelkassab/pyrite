@@ -27,7 +27,7 @@ RUN CGO_ENABLED=0 go build -trimpath \
 # image is a tested image.
 RUN go test ./...
 
-FROM alpine:3.20
+FROM alpine:3.24
 # Certificates are the one runtime dependency: every data source and model
 # provider is reached over HTTPS.
 RUN apk add --no-cache ca-certificates tzdata \
