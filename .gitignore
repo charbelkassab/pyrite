@@ -19,3 +19,6 @@ config.json
 .idea/
 .vscode/
 *.swp
+
+# Agent worktrees — local scratch, never part of the repository
+.claude/worktrees/
