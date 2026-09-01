@@ -6,11 +6,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and versions follow [semantic versioning](https://semver.org/) once there is a
 release to version.
 
-## Unreleased
+## v0.1.0 — 2026-09-01
 
-Everything below is the first public shape of the project. Until `v0.1.0` is
-tagged there is no compatibility promise: the strategy API, the JSON API and
-the CLI flags may all move.
+The first release. Everything below is the shape the project is published in.
+
+This is a 0.x: the strategy API, the JSON API and the CLI flags may still
+move, and a change to any of them will appear here before it appears in a
+release. What will not move is the engine's defaults — orders fill at the next
+open, slippage is charged, and every run reports the case against itself.
 
 ### The tool decides whether to believe itself
 
