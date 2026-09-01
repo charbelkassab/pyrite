@@ -143,7 +143,7 @@ for Linux, macOS and Windows. Verify against `SHA256SUMS`.
 go install github.com/charbelkassab/pyrite/cmd/pyrite@latest
 ```
 
-**Docker** — a 29 MB image, non-root, no external services:
+**Docker** — a 31 MB image, non-root, no external services:
 
 ```bash
 docker run --rm -p 8080:8080 ghcr.io/charbelkassab/pyrite \
