@@ -816,6 +816,8 @@ pyrite ingest index               point-in-time S&P 500 membership
 
 pyrite mcp                        serve the Model Context Protocol on stdio
 
+pyrite selftest                   run the critique against strategies built to
+                                  be caught; exits 1 if a defect is missed
 pyrite doctor                     what works right now, and how to fix the rest
 pyrite api                        print the strategy API reference
 pyrite cache clear [--ai]         clear cached market data and replies

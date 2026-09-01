@@ -20,6 +20,16 @@ the CLI flags may all move.
   symbol list, in-loop model calls, benchmark dominance and late exits. Computed
   in Go rather than asked of a model, so it costs nothing, needs no key, and
   cannot invent a number.
+- **A self-test for the critic.** `pyrite selftest` runs the critique against a
+  corpus of strategies built to be caught — two round trips in ten years, close
+  fills, frictionless churn, a return carried by six sessions, a short
+  volatility payoff, an empty `onDay`, a universe of today's winners, a
+  benchmark that wins on return and drawdown, an unadjusted split — each paired
+  with the finding it must produce, plus one sound control that must come back
+  with nothing critical against it. Two of the cases also run a contrast with
+  the defect removed, so a critic that fired regardless would fail. Synthetic
+  and hand-built bars throughout, so it runs offline in `go test ./...`, and
+  exits 1 if a defect goes unreported.
 - **Parameter search.** `pyrite sweep` runs the whole declared space across a
   worker pool — 1,064 combinations over nine years in 4.6 seconds — and reports
   a heatmap, the deflated Sharpe, the probability of backtest overfitting by

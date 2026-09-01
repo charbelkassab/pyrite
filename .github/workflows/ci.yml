@@ -107,6 +107,11 @@ jobs:
           ./nq report --example mean-reversion --offline --from 2019-01-02 --to 2023-12-29 --out /tmp/report.md
           test -s /tmp/report.md
           grep -q "How much should you believe this" /tmp/report.md
+      # The critique is the reason to use this tool, so the corpus of
+      # strategies it has to catch runs against the shipped binary too. It
+      # exits non-zero if one of them gets past it.
+      - name: The critic, against strategies built to be caught
+        run: ./nq selftest
       - name: Doctor
         run: ./nq doctor
 
