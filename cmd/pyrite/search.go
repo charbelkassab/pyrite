@@ -817,6 +817,7 @@ func cmdReport(args []string) error {
 	codeFile, warmup, example := addCodeFileFlags(fs)
 	interval := addIntervalFlag(fs)
 	out := fs.String("out", "", "write the report here instead of stdout")
+	htmlOut := fs.String("html", "", "also write a self-contained HTML report here")
 	skipSweep := fs.Bool("no-sweep", false, "skip the parameter search")
 	skipWF := fs.Bool("no-walkforward", false, "skip the walk-forward evaluation")
 	train := fs.Int("train", 504, "walk-forward training window in sessions")
@@ -922,14 +923,30 @@ func cmdReport(args []string) error {
 		enc.SetIndent("", "  ")
 		return enc.Encode(rep)
 	}
-	doc := rep.Markdown()
-	if *out == "" {
-		fmt.Print(doc)
+	write := func(path, doc string) error {
+		if err := os.WriteFile(path, []byte(doc), 0o644); err != nil {
+			return err
+		}
+		fmt.Fprintf(os.Stderr, "wrote %s (%d bytes)\n", path, len(doc))
 		return nil
 	}
-	if err := os.WriteFile(*out, []byte(doc), 0o644); err != nil {
-		return err
+	if *htmlOut != "" {
+		doc, err := rep.HTML()
+		if err != nil {
+			return err
+		}
+		if err := write(*htmlOut, doc); err != nil {
+			return err
+		}
 	}
-	fmt.Fprintf(os.Stderr, "wrote %s (%d bytes)\n", *out, len(doc))
+	if *out != "" {
+		return write(*out, rep.Markdown())
+	}
+	// Only fall back to stdout when nothing was asked for by name. Printing
+	// the Markdown alongside --html would bury the one line saying where the
+	// file went.
+	if *htmlOut == "" {
+		fmt.Print(rep.Markdown())
+	}
 	return nil
 }

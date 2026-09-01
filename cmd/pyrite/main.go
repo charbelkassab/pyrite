@@ -91,7 +91,8 @@ Common flags:
   sweep:        --param fast=10,20,50   --objective sharpe   --csv out.csv
   walkforward:  --train 504  --test 126  --embargo 200  --anchored
   improve:      --budget 6   --holdout 0.3   --goal "..."
-  report:       --out report.md  --no-sweep  --no-walkforward
+  report:       --out report.md  --html report.html  --no-sweep
+                --no-walkforward
 
 Model provider keys are read from the environment:
   OPENAI_API_KEY, CEREBRAS_API_KEY, KIMI_API_KEY (or MOONSHOT_API_KEY)
@@ -107,7 +108,7 @@ Examples:
   pyrite run "buy $100 of the biggest company by market cap each day, sell when it is no longer number one"
   pyrite sweep "golden cross on SPY" --from 2015-01-01
   pyrite walkforward "each month hold the 20 strongest S&P 500 names" --universe sp500
-  pyrite report "a 60/40 portfolio rebalanced quarterly" --out report.md
+  pyrite report "a 60/40 portfolio rebalanced quarterly" --html report.html
 `
 
 func main() {
@@ -1221,6 +1222,6 @@ func cmdExamples(args []string) error {
 	fmt.Printf("Run one          pyrite run --example golden-cross\n")
 	fmt.Printf("Read the code    pyrite examples golden-cross\n")
 	fmt.Printf("Search its space pyrite sweep --example golden-cross\n")
-	fmt.Printf("Full report      pyrite report --example golden-cross --out report.md\n")
+	fmt.Printf("Full report      pyrite report --example golden-cross --html report.html\n")
 	return nil
 }

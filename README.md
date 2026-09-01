@@ -391,7 +391,7 @@ legitimate answer.
 ### And `report` — all of it, as one document
 
 ```bash
-pyrite report "a golden cross on SPY" --out report.md
+pyrite report "a golden cross on SPY" --out report.md --html report.html
 ```
 
 Runs the backtest, the parameter search, the walk-forward, the cost scan and a
@@ -404,6 +404,12 @@ objections, the provenance, and the code.
 Every number in it is computed. With a model key the document also opens with a
 written summary; without one it is still complete, because prose is the only
 part a model contributes.
+
+`--html` writes the same document as one self-contained page: the equity curve,
+the drawdown beneath it and the calendar years drawn as inline SVG, light and
+dark, no scripts and no network requests of any kind. It opens from a `file://`
+URL, prints to a sensible PDF, and is the version to send somebody. The two
+flags work together or on their own.
 
 ---
 
@@ -828,7 +834,7 @@ Common flags: `--from`, `--to`, `--cash`, `--benchmark`, `--universe`,
 Per command: `run --cost-scan` · `sweep --param fast=10,20,50 --objective
 sharpe --csv out.csv` · `walkforward --train 504 --test 126 --embargo 200
 --anchored` · `improve --budget 6 --holdout 0.3 --goal "..."` · `report --out
-report.md` · `ledger --dataset <key> --reset --yes`.
+report.md --html report.html` · `ledger --dataset <key> --reset --yes`.
 
 A key is needed only to compile plain language. Every search above runs on
 `--code-file` or `--example` with none.
