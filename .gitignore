@@ -22,3 +22,7 @@ config.json
 
 # Agent worktrees — local scratch, never part of the repository
 .claude/worktrees/
+
+# Python bytecode
+__pycache__/
+*.py[cod]
