@@ -49,6 +49,22 @@ the CLI flags may all move.
   reports the cumulative trial count, the strategy versions tried, and the
   score the best of that many tries reaches by luck alone. Runs and sweeps say
   so when the history has outgrown them. `PYRITE_NO_LEDGER=1` turns it off.
+- **Paper-forward mode.** Walk-forward, the blind holdout and the ledger all
+  constrain how a past sample is used, and a determined person defeats all
+  three by iterating. `pyrite forward record` writes down the book a strategy
+  wants to hold when the market next opens, before the prices exist; `pyrite
+  forward score` measures those records once their sessions have happened, and
+  reports realised return per decision, hit rate, mean and a t-statistic — with
+  a verdict that says plainly how little a handful of sessions proves, and how
+  many more it would take to reach `|t| = 2` at the mean and spread seen so
+  far. Each record is sealed into a hash chain, so an entry cannot be altered
+  or removed afterwards without `pyrite forward verify` naming the index of the
+  first record that no longer adds up; scoring refuses to run over a chain that
+  does not verify. Recording twice in one day is a no-op, and a second,
+  differing decision for the same day is refused rather than merged. `--as-of`
+  exists for backfilling a missed session and for testing the loop: anything
+  written after its outcome already existed is marked as a backfill and kept
+  out of the forward figures.
 - **Research reports.** `pyrite report` runs the whole battery and writes one
   Markdown document, verdict first.
 - **Shareable HTML reports.** `pyrite report --html out.html` renders the same
