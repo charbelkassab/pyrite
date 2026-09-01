@@ -139,6 +139,19 @@ func ObjectiveNames() []string {
 // in-memory cache, so the probe is close to free relative to the search it
 // enables.
 func DeclaredParams(ctx context.Context, spec Spec, store *market.Store) ([]ParamDecl, error) {
+	decls, _, err := declaredSetup(ctx, spec, store)
+	return decls, err
+}
+
+// declaredSetup runs setup() and reports both of the things it can declare.
+//
+// The warm-up matters as much as the parameters do to anything that has to
+// plan windows: a strategy may raise it with ctx.warmup() rather than carry it
+// in the spec it was handed, and a caller reading only the spec sizes its
+// embargo from a zero. They come out of one call because they come out of one
+// setup(), and running it twice to collect them separately would cost a data
+// load for nothing.
+func declaredSetup(ctx context.Context, spec Spec, store *market.Store) ([]ParamDecl, int, error) {
 	spec.ApplyDefaults()
 	spec.OmitDayRecords = true
 	e := New(spec, store)
@@ -150,19 +163,19 @@ func DeclaredParams(ctx context.Context, spec Spec, store *market.Store) ([]Para
 	// before the line that names the symbols had executed.
 	if len(spec.Universe) > 0 || spec.Index != "" {
 		if err := e.loadData(ctx); err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 	}
 	e.portfolio = NewPortfolio(spec.InitialCash, spec.Costs)
 	vm, err := newStrategyVM(e)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	defer vm.Close()
 	if err := vm.callSetup(); err != nil {
-		return nil, fmt.Errorf("strategy setup() failed: %w", err)
+		return nil, 0, fmt.Errorf("strategy setup() failed: %w", err)
 	}
-	return e.paramDecls, nil
+	return e.paramDecls, e.spec.Warmup, nil
 }
 
 // Sweep runs every combination of a strategy's parameters.

@@ -377,16 +377,7 @@ func (r *Robustness) AddPBO(returns [][]float64, blocks int) {
 			continue
 		}
 
-		// Where did the in-sample winner rank out of sample?
-		rank := 0
-		for _, v := range oos {
-			if v < oos[bestTrial] {
-				rank++
-			}
-		}
-		// Logit of the relative rank, thresholded at the median. Counting the
-		// median crossings directly is equivalent and easier to explain.
-		if float64(rank) < float64(len(oos)-1)/2 {
+		if belowMedianRank(oos, bestTrial) {
 			below++
 		}
 		total++
@@ -395,6 +386,26 @@ func (r *Robustness) AddPBO(returns [][]float64, blocks int) {
 		r.PBO = Ratio(float64(below) / float64(total))
 		r.PBOSplits = total
 	}
+}
+
+// belowMedianRank reports whether the trial chosen in-sample finished in the
+// bottom half of the field out of sample.
+//
+// Logit of the relative rank, thresholded at the median. Counting the median
+// crossings directly is equivalent and easier to explain. Shared with the
+// combinatorial purged cross-validation, which asks the identical question of
+// different partitions and must not answer it by different arithmetic.
+func belowMedianRank(scores []float64, pick int) bool {
+	if pick < 0 || pick >= len(scores) {
+		return false
+	}
+	rank := 0
+	for _, v := range scores {
+		if v < scores[pick] {
+			rank++
+		}
+	}
+	return float64(rank) < float64(len(scores)-1)/2
 }
 
 // sharpeOf is a per-period Sharpe with no risk-free adjustment, which is all

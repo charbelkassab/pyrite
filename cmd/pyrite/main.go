@@ -46,6 +46,9 @@ Searching, because one backtest is one point in a space:
   pyrite sweep "<strategy>"         every combination, plus a heatmap and
                                            the overfitting statistics
   pyrite walkforward "<strategy>"   choose on one period, report on the next
+  pyrite cpcv "<strategy>"          hold out every combination of periods, and
+                                           report the spread of the out-of-sample
+                                           paths rather than one of them
   pyrite improve "<strategy>"       guided search against a blind holdout
   pyrite ledger                     how much searching each dataset has
                                            already absorbed, across sessions
@@ -98,9 +101,11 @@ Common flags:
                                  same trade count, holding period and exposure
   sweep:        --param fast=10,20,50   --objective sharpe   --csv out.csv
   walkforward:  --train 504  --test 126  --embargo 200  --anchored
+  cpcv:         --groups 6   --test-groups 2   --embargo 200
+                --no-walkforward
   improve:      --budget 6   --holdout 0.3   --goal "..."
   report:       --out report.md  --html report.html  --no-sweep
-                --no-walkforward  --no-scenarios
+                --no-walkforward  --no-scenarios  --cpcv
   scenarios:    --list        print the windows and their dates, run nothing
                 --from/--to   consider only windows inside that range
 
@@ -118,6 +123,7 @@ Examples:
   pyrite run "buy $100 of the biggest company by market cap each day, sell when it is no longer number one"
   pyrite sweep "golden cross on SPY" --from 2015-01-01
   pyrite walkforward "each month hold the 20 strongest S&P 500 names" --universe sp500
+  pyrite cpcv --example golden-cross --from 2010-01-05
   pyrite report "a 60/40 portfolio rebalanced quarterly" --html report.html
   pyrite scenarios --example sixty-forty
 `
@@ -175,6 +181,8 @@ func run() error {
 		return cmdSweep(args)
 	case "walkforward", "wf":
 		return cmdWalkForward(args)
+	case "cpcv":
+		return cmdCPCV(args)
 	case "improve":
 		return cmdImprove(args)
 	case "report":

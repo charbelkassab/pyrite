@@ -26,9 +26,13 @@ type Report struct {
 	// pretending the question was not asked.
 	Sweep       *SweepResult       `json:"-"`
 	WalkForward *WalkForwardResult `json:"-"`
-	Costs       *CostScan          `json:"-"`
-	Capacity    *Capacity          `json:"-"`
-	Bootstrap   BootstrapBands     `json:"bootstrap"`
+	// CPCV is the combinatorial purged cross-validation. It is behind a flag
+	// on the command line because it costs one backtest per combination per
+	// group, which is the most expensive thing in the document.
+	CPCV      *CPCVResult    `json:"-"`
+	Costs     *CostScan      `json:"-"`
+	Capacity  *Capacity      `json:"-"`
+	Bootstrap BootstrapBands `json:"bootstrap"`
 	// Factors is the decomposition against known risk premia. It is small
 	// enough to travel in the JSON, unlike the four above.
 	Factors *FactorExposure `json:"factors,omitempty"`
@@ -66,6 +70,7 @@ func (r *Report) Markdown() string {
 	r.writeVerdict(&b)
 	r.writeHeadline(&b)
 	r.writeOutOfSample(&b)
+	r.writeCrossValidation(&b)
 	r.writeRobustness(&b)
 	r.writeAttribution(&b)
 	r.writeReasons(&b)
@@ -98,6 +103,9 @@ func (r *Report) writeVerdict(b *strings.Builder) {
 
 	if r.WalkForward != nil && r.WalkForward.Verdict != "" {
 		fmt.Fprintf(b, "Out of sample: %s.\n\n", r.WalkForward.Verdict)
+	}
+	if r.CPCV != nil && r.CPCV.Verdict != "" {
+		fmt.Fprintf(b, "Across every held-out combination: %s.\n\n", r.CPCV.Verdict)
 	}
 	if r.Sweep != nil && r.Sweep.Robustness.Verdict != "" {
 		fmt.Fprintf(b, "Across the parameter space: %s.\n\n", r.Sweep.Robustness.Verdict)
@@ -186,6 +194,79 @@ func (r *Report) writeOutOfSample(b *strings.Builder) {
 	}
 	fmt.Fprintf(b, "| Positive test windows | %d of %d |\n", wf.ConsistentFolds, len(wf.Folds))
 	fmt.Fprintf(b, "| Parameter stability | %s |\n\n", pctText(wf.ParamStability))
+}
+
+// writeCrossValidation reports the spread of out-of-sample paths.
+//
+// The section above it gives one out-of-sample number. This one gives the
+// range the same data supports, which is what says whether that number was a
+// finding or a draw.
+func (r *Report) writeCrossValidation(b *strings.Builder) {
+	c := r.CPCV
+	if c == nil || c.ValidPaths == 0 {
+		return
+	}
+	b.WriteString("## Every combination held out\n\n")
+	fmt.Fprintf(b, "The period was cut into %d groups and every combination of %d of them was "+
+		"held out in turn, with %d sessions purged from training either side of each. That is "+
+		"%d splits, which reassemble into %d full-length out-of-sample paths — none of them "+
+		"fitted to, and all of them covering the same period.\n\n",
+		c.Groups, c.TestGroups, c.Embargo, len(c.Splits), c.ValidPaths)
+
+	b.WriteString("| Path | Return | Annualised | Sharpe | Max drawdown |\n")
+	b.WriteString("| --- | ---: | ---: | ---: | ---: |\n")
+	for _, p := range c.Paths {
+		if p.Error != "" {
+			fmt.Fprintf(b, "| %d | %s | | | |\n", p.Index, p.Error)
+			continue
+		}
+		fmt.Fprintf(b, "| %d | %s | %s | %s | %s |\n", p.Index,
+			pctText(p.Metrics.TotalReturn), pctText(p.Metrics.CAGR),
+			ratioText(p.Metrics.Sharpe), pctText(p.Metrics.MaxDrawdown))
+	}
+	b.WriteString("\n")
+
+	b.WriteString("| Across the paths | Return | Annualised | Sharpe |\n")
+	b.WriteString("| --- | ---: | ---: | ---: |\n")
+	row := func(label string, get func(PathSpread) Ratio) {
+		fmt.Fprintf(b, "| %s | %s | %s | %s |\n", label,
+			pctOrNAText(get(c.Return)), pctOrNAText(get(c.CAGR)), ratioText(get(c.Sharpe)))
+	}
+	row("Mean", func(s PathSpread) Ratio { return s.Mean })
+	row("Median", func(s PathSpread) Ratio { return s.Median })
+	row("Standard deviation", func(s PathSpread) Ratio { return s.Stdev })
+	row("5th percentile", func(s PathSpread) Ratio { return s.P05 })
+	row("95th percentile", func(s PathSpread) Ratio { return s.P95 })
+	row("Worst path", func(s PathSpread) Ratio { return s.Worst })
+	fmt.Fprintf(b, "| Paths profitable | %d of %d | | |\n\n", c.ProfitablePaths, c.ValidPaths)
+
+	fmt.Fprintf(b, "| | Value | |\n| --- | ---: | --- |\n")
+	if c.NoSelection.Median.Defined() {
+		fmt.Fprintf(b, "| Choosing nothing | %s | one configuration held over the same groups, "+
+			"at the median of all %d; the difference from the paths above is all the selection "+
+			"can claim |\n", pctOrNAText(c.NoSelection.Median), c.Combos)
+	}
+	if c.PBO.Defined() {
+		fmt.Fprintf(b, "| Probability of backtest overfitting | %s | over %d purged splits; "+
+			"50%% is a coin flip |\n", pctOrNAText(c.PBO), c.PBOSplits)
+	}
+	if c.BlockPBO.Defined() {
+		fmt.Fprintf(b, "| ... the sweep's unpurged partition | %s | over %d splits, cut into "+
+			"blocks with nothing withheld between them |\n", pctOrNAText(c.BlockPBO), c.BlockPBOSplits)
+	}
+	if wf := c.WalkForward; wf != nil {
+		fmt.Fprintf(b, "| The walk-forward path, annualised | %s | one draw, at the %s of "+
+			"these paths |\n", pctOrNAText(wf.CAGR), percentileText(wf.CAGRPercentile))
+	}
+	b.WriteString("\n")
+}
+
+// percentileText names a position in a distribution.
+func percentileText(r Ratio) string {
+	if !r.Defined() {
+		return "an unknown percentile"
+	}
+	return fmt.Sprintf("%.0fth percentile", float64(r)*100)
 }
 
 func (r *Report) writeRobustness(b *strings.Builder) {
