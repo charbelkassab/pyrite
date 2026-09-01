@@ -837,7 +837,19 @@ func cmdReport(args []string) error {
 	}
 	rep.Bootstrap = engine.Bootstrap(rep.Run.Curve, 2000, 21, s.spec.Seed)
 
-	// 5. The prose, when a model is available. Everything above stands
+	// 5. What is left once known risk premia are taken out. The proxies are
+	//    ETFs, so this needs price data the run itself did not necessarily
+	//    load; a period the funds do not cover costs the section, not the
+	//    document.
+	fmt.Fprintf(os.Stderr, "decomposing against factors...\n")
+	if fx, err := engine.AnalyseFactors(s.ctx, rep.Run.Curve, s.app.Store, s.spec.Interval,
+		engine.ScaleFor(s.spec.Interval, s.spec.RiskFreeRate), nil); err == nil {
+		rep.Factors = fx
+	} else {
+		fmt.Fprintf(os.Stderr, "  skipped: %s\n", truncate(err.Error(), 70))
+	}
+
+	// 6. The prose, when a model is available. Everything above stands
 	//    without it, so a missing key costs a paragraph, not the document.
 	if s.app.Cfg.AnyProviderEnabled() {
 		fmt.Fprintf(os.Stderr, "writing the summary...\n")
