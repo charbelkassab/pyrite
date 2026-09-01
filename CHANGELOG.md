@@ -43,7 +43,6 @@ the CLI flags may all move.
   Markdown document, verdict first.
 - **Cost sensitivity.** `--cost-scan` re-runs at 0, 5, 20 and 50 bps and
   interpolates the break-even.
-<<<<<<< HEAD
 - **Factor exposure.** `--factors` regresses the strategy's excess returns on
   market, size, value, momentum and quality, and reports the residual alpha
   with its t-statistic. Newey-West standard errors, because daily strategy
@@ -52,7 +51,6 @@ the CLI flags may all move.
   academic series, which is stated in the output rather than buried here. A
   proxy with no data over the period is dropped and named. `pyrite report`
   carries the same analysis as its own section.
-=======
 - **Reality check and SPA.** `pyrite sweep` runs White's Reality Check and
   Hansen's Superior Predictive Ability test over every trial's return series at
   once, stationary-bootstrapped, so the search is judged as the search it was
@@ -73,7 +71,6 @@ the CLI flags may all move.
   series more evenly than chance understates variance and so understates every
   p-value drawn from it. Now drawn from the high bits. Numbers `Bootstrap`
   reports move in the third decimal place.
->>>>>>> worktree-agent-a56676c8f13cf8fb8
 
 ### Bar sizes
 
