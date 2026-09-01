@@ -141,7 +141,11 @@ func DefaultCosts() Costs {
 type Portfolio struct {
 	Cash      float64
 	Positions map[string]*Position
-	Costs     Costs
+	// symBuf holds the position symbols in sorted order; symDirty marks it
+	// stale after the book gains a symbol.
+	symBuf   []string
+	symDirty bool
+	Costs    Costs
 	// AllowFractional permits fractional share quantities. Enabled by
 	// default because dollar-denominated strategies ("buy $100 of X") are a
 	// primary use case and rounding them to whole shares distorts small
@@ -186,7 +190,8 @@ func (p *Portfolio) Position(symbol string) *Position {
 // MarketValue is the signed value of all open positions at the given prices.
 func (p *Portfolio) MarketValue(prices map[string]float64) float64 {
 	var total float64
-	for sym, pos := range p.Positions {
+	for _, sym := range p.sortedSymbols() {
+		pos := p.Positions[sym]
 		if pos.Shares == 0 {
 			continue
 		}
@@ -197,6 +202,35 @@ func (p *Portfolio) MarketValue(prices map[string]float64) float64 {
 	return total
 }
 
+// sortedSymbols lists the open positions in a fixed order.
+//
+// Floating-point addition is not associative, so summing a book by ranging
+// over the positions map made the total depend on Go's randomised map order:
+// two identical multi-symbol runs differed in the last unit in the last
+// place. Far too small to change any figure this tool prints, and still
+// enough to make the reproducibility manifest's promise false as written. A
+// backtester that cannot reproduce its own number to the bit has no business
+// shipping a manifest saying it can.
+//
+// The order is cached and rebuilt only when a symbol enters the book, which
+// happens on a fill rather than on a bar. Sorting on every call instead cost
+// about 40% of the run time of a forty-symbol sweep, because these sums are
+// taken several times per session. A closed position keeps its entry with
+// zero shares rather than being deleted, so the map only ever grows and a
+// length comparison is enough to catch a stale buffer on its own.
+func (p *Portfolio) sortedSymbols() []string {
+	if !p.symDirty && len(p.symBuf) == len(p.Positions) {
+		return p.symBuf
+	}
+	p.symBuf = p.symBuf[:0]
+	for sym := range p.Positions {
+		p.symBuf = append(p.symBuf, sym)
+	}
+	sort.Strings(p.symBuf)
+	p.symDirty = false
+	return p.symBuf
+}
+
 // Equity is cash plus the market value of open positions.
 func (p *Portfolio) Equity(prices map[string]float64) float64 {
 	return p.Cash + p.MarketValue(prices)
@@ -205,9 +239,9 @@ func (p *Portfolio) Equity(prices map[string]float64) float64 {
 // GrossExposure is the sum of absolute position values.
 func (p *Portfolio) GrossExposure(prices map[string]float64) float64 {
 	var total float64
-	for sym, pos := range p.Positions {
+	for _, sym := range p.sortedSymbols() {
 		if px, ok := prices[sym]; ok {
-			total += math.Abs(pos.Shares * px)
+			total += math.Abs(p.Positions[sym].Shares * px)
 		}
 	}
 	return total
@@ -230,6 +264,7 @@ func (p *Portfolio) Execute(day market.Day, symbol string, shares, refPrice floa
 	if pos == nil {
 		pos = &Position{Symbol: symbol}
 		p.Positions[symbol] = pos
+		p.symDirty = true
 	}
 
 	if !p.AllowShort && pos.Shares+shares < -1e-9 {
