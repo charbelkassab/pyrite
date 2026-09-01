@@ -50,6 +50,14 @@ Searching, because one backtest is one point in a space:
   pyrite ledger                     how much searching each dataset has
                                            already absorbed, across sessions
 
+The one test nobody can iterate against, because the future has not happened:
+  pyrite forward record             write down what the strategy wants to hold
+                                    next session, sealed in a hash chain
+  pyrite forward score              measure the records whose sessions have
+                                    since happened
+  pyrite forward verify             check that nothing recorded was altered
+  pyrite forward list               what has been written down so far
+
 Before you trust any of it, check the data it rests on:
   pyrite audit AAPL MSFT SPY        unadjusted splits, stale prices, missing
                                     sessions, impossible bars. Exits 2 on a
@@ -85,6 +93,10 @@ Common flags:
   --json        print machine readable output
 
   ledger:       --dataset <key>  --reset [--yes]  --all
+  forward:      --example/--code-file  --name <label>  --horizon <sessions>
+                --as-of <date>   for backfilling a missed session or testing
+                                 the loop; a record written after its outcome
+                                 existed is marked and kept out of the figures
   audit:        --csv-dir ./export   audit your own vendor CSVs
   run:          --cost-scan      re-run at 0, 5, 20 and 50 bps of slippage
                 --capacity       re-run from $100k to $1bn with market impact
@@ -111,6 +123,10 @@ every search above — runs on --code-file with no key at all.
 
 Every run and sweep is counted in the research ledger, so the trial count
 outlives the session that produced it. PYRITE_NO_LEDGER=1 turns that off.
+
+pyrite forward is the only claim here that cannot be reached by iterating:
+record every session, and score measures decisions that were written down
+before the prices they are scored against existed.
 
 Examples:
   pyrite serve --offline --open
@@ -185,6 +201,8 @@ func run() error {
 		return cmdExamples(args)
 	case "ledger":
 		return cmdLedger(args)
+	case "forward":
+		return cmdForward(args)
 	case "version", "-v", "--version":
 		fmt.Printf("pyrite %s\n", version)
 		return nil
