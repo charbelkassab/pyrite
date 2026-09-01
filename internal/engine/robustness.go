@@ -121,6 +121,15 @@ func (r *Robustness) Finish(objective string) {
 	r.Verdict = verdict(*r, objective)
 }
 
+// ExpectedMaxScore is the score the best of n trials reaches by luck alone,
+// given the spread of scores observed.
+//
+// Exported so the research ledger can ask it of a whole history of searches
+// rather than of one sweep. Two numbers on the same screen answering the same
+// question by different arithmetic would be worse than either of them alone,
+// so there is one formula and this is the way in.
+func ExpectedMaxScore(spread float64, n int) float64 { return expectedMax(spread, n) }
+
 // expectedMax is the expected maximum of N independent draws from a
 // zero-mean normal with the given standard deviation.
 //

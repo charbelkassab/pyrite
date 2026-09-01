@@ -13,6 +13,7 @@ internal/
   llm                  one OpenAI-compatible client for all three providers
   market               prices, cache, fundamentals, universes
   engine               backtest loop, portfolio, metrics, JS bindings
+  ledger               how many trials each dataset has absorbed, across runs
   strategy             prompt -> validated JavaScript
   websearch            keyless news and web lookups
   server               JSON API, SSE, static assets

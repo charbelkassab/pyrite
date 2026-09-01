@@ -18,6 +18,7 @@ import (
 	"github.com/charbelkassab/pyrite/examples"
 	"github.com/charbelkassab/pyrite/internal/app"
 	"github.com/charbelkassab/pyrite/internal/engine"
+	"github.com/charbelkassab/pyrite/internal/ledger"
 	"github.com/charbelkassab/pyrite/internal/market"
 	"github.com/charbelkassab/pyrite/internal/strategy"
 )
@@ -162,13 +163,48 @@ func cmdSweep(args []string) error {
 		}
 		fmt.Fprintf(os.Stderr, "wrote %s\n", *csvPath)
 	}
+	note := recordSweep(s, res)
+
 	if *asJSON {
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
+		printLedgerNote(note, true)
 		return enc.Encode(res)
 	}
 	printSweep(s.plan, res, *top, *heatmap)
+	printLedgerNote(note, false)
 	return nil
+}
+
+// recordSweep adds a whole search to the research ledger.
+//
+// The robustness statistics printed alongside it deflate for the combinations
+// this one search tried. The ledger's job is to remember that they were not
+// the first, and the spread recorded here is what lets a later plain run —
+// which has no spread of its own — say what luck alone would have reached.
+func recordSweep(s *searchSetup, res *engine.SweepResult) string {
+	spec := s.spec
+	if len(res.Best) > 0 {
+		// The winner's spec carries the dates as the engine resolved them,
+		// which is what a plain run over the same period also records.
+		spec = res.Best[0].Spec
+	}
+	e := ledger.Entry{
+		DatasetKey:  ledger.DatasetKey(datasetOf(spec)),
+		Strategy:    s.plan.Name,
+		Trials:      res.Combos,
+		Objective:   res.Objective,
+		BestScore:   engine.Ratio(math.NaN()),
+		ScoreSpread: engine.Ratio(math.NaN()),
+	}
+	if len(res.Best) > 0 {
+		e.CodeSHA256 = res.Best[0].Manifest.CodeSHA256
+	}
+	if res.Combos > res.Failed {
+		e.BestScore = engine.Ratio(res.Robustness.BestScore)
+		e.ScoreSpread = engine.Ratio(res.Robustness.ScoreStdev)
+	}
+	return recordInvocation(s.app.Cfg, e)
 }
 
 // cmdWalkForward optimises on rolling windows and reports out of sample.
