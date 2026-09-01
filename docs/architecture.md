@@ -47,6 +47,7 @@ robustness.go    deflated Sharpe, PBO, bootstrap, plateau
 realitycheck.go  White's Reality Check and Hansen's SPA over the trials
 nullstrategy.go  the winner against random entries matched on its habits
 costs.go         the same strategy at several friction levels
+scenarios.go     the same strategy through named historical crises
 agent.go         guided search, and the holdout wall
 critique.go      what is wrong with this result
 report.go        all of the above, as one document

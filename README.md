@@ -803,6 +803,7 @@ pyrite run "<strategy>"           one backtest, with its own critique
 pyrite run --example NAME         run a bundled strategy, no key needed
 pyrite examples                   list the bundled strategies
 pyrite report "<strategy>"        the full battery, as one document
+pyrite scenarios "<strategy>"     replay it through named historical crises
 
 pyrite sweep "<strategy>"         every combination, plus a heatmap and
                                   the overfitting statistics
@@ -828,7 +829,7 @@ Common flags: `--from`, `--to`, `--cash`, `--benchmark`, `--universe`,
 Per command: `run --cost-scan` · `sweep --param fast=10,20,50 --objective
 sharpe --csv out.csv` · `walkforward --train 504 --test 126 --embargo 200
 --anchored` · `improve --budget 6 --holdout 0.3 --goal "..."` · `report --out
-report.md` · `ledger --dataset <key> --reset --yes`.
+report.md` · `scenarios --list` · `ledger --dataset <key> --reset --yes`.
 
 A key is needed only to compile plain language. Every search above runs on
 `--code-file` or `--example` with none.

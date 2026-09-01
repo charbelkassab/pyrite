@@ -31,6 +31,9 @@ type Report struct {
 	// Factors is the decomposition against known risk premia. It is small
 	// enough to travel in the JSON, unlike the four above.
 	Factors *FactorExposure `json:"factors,omitempty"`
+	// Scenarios is the strategy replayed through named historical crises.
+	// Also small: thirteen rows of summary statistics, no curves.
+	Scenarios *ScenarioReport `json:"scenarios,omitempty"`
 
 	// Narrative is a model's prose summary. Everything else in the document
 	// stands without it.
@@ -64,6 +67,7 @@ func (r *Report) Markdown() string {
 	r.writeOutOfSample(&b)
 	r.writeRobustness(&b)
 	r.writeAttribution(&b)
+	r.writeScenarios(&b)
 	r.writeCosts(&b)
 	r.writeFactors(&b)
 	r.writeBootstrap(&b)
@@ -93,6 +97,9 @@ func (r *Report) writeVerdict(b *strings.Builder) {
 	}
 	if r.Sweep != nil && r.Sweep.Robustness.Verdict != "" {
 		fmt.Fprintf(b, "Across the parameter space: %s.\n\n", r.Sweep.Robustness.Verdict)
+	}
+	if r.Scenarios != nil && r.Scenarios.Verdict != "" {
+		fmt.Fprintf(b, "In the named crises: %s.\n\n", r.Scenarios.Verdict)
 	}
 	if r.Costs != nil && r.Costs.Verdict != "" {
 		fmt.Fprintf(b, "On costs: %s.\n\n", r.Costs.Verdict)
@@ -267,6 +274,85 @@ func (r *Report) writeAttribution(b *strings.Builder) {
 				money(s.NetPnL), pctText(s.Contribution), s.Trades, pctText(s.WinRate))
 		}
 		b.WriteString("\n")
+	}
+}
+
+// writeScenarios reports the strategy through named historical crises.
+//
+// It sits after the calendar attribution because it answers the question that
+// section raises and cannot settle: a year is an arbitrary slice, and "2020
+// was fine" is not an answer to "what happened in March".
+func (r *Report) writeScenarios(b *strings.Builder) {
+	s := r.Scenarios
+	if s == nil || len(s.Runs) == 0 {
+		return
+	}
+	b.WriteString("## What happened in each crisis\n\n")
+	fmt.Fprintf(b, "Each window was run on its own, preceded by %d bars of indicator "+
+		"warm-up and %d sessions of ordinary trading, so the strategy enters the window "+
+		"holding whatever it would have been holding rather than starting in cash. Only "+
+		"the window itself is measured.\n\n", s.Warmup, s.LeadIn)
+	b.WriteString("The last column is the S&P 500's own peak-to-trough decline inside the " +
+		"window, from published closes. It is fixed reference data rather than something " +
+		"measured here, and the column to compare it against is the benchmark's drawdown " +
+		"beside it: a large gap between those two says the price data is wrong, not that " +
+		"the strategy is. The benchmark return is the whole window's return, which differs " +
+		"from a drawdown wherever the trough was not the last session.\n\n")
+
+	b.WriteString("| Crisis | Window | Return | Drawdown | Benchmark | Bench. drawdown | Excess | Index then |\n")
+	b.WriteString("| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |\n")
+	type skip struct {
+		reason string
+		names  []string
+	}
+	var skipped []skip
+	for _, run := range s.Runs {
+		window := fmt.Sprintf("%s to %s", run.Start, run.End)
+		if !run.Measured() {
+			// The reason goes below the table rather than into a numeric
+			// column, but the row stays: a table of the windows this data
+			// happens to reach must not read as a table of every crisis.
+			reason := run.SkipReason
+			if reason == "" {
+				reason = "the run failed: " + run.Error
+			}
+			found := false
+			for i := range skipped {
+				if skipped[i].reason == reason {
+					skipped[i].names = append(skipped[i].names, run.Name)
+					found = true
+				}
+			}
+			if !found {
+				skipped = append(skipped, skip{reason, []string{run.Name}})
+			}
+			fmt.Fprintf(b, "| %s | %s | not measured | | | | | %s |\n",
+				run.Name, window, pctText(run.IndexDrawdown))
+			continue
+		}
+		fmt.Fprintf(b, "| %s | %s | %s | %s | %s | %s | %s | %s |\n",
+			run.Name, window, pctOrNAText(run.Return), pctOrNAText(run.MaxDrawdown),
+			pctOrNAText(run.BenchmarkReturn), pctOrNAText(run.BenchmarkDrawdown),
+			pctOrNAText(run.Excess), pctText(run.IndexDrawdown))
+	}
+	fmt.Fprintf(b, "\n%d of %d windows were measured; the strategy's data runs from %s to %s.\n\n",
+		s.Covered, len(s.Runs), s.DataFrom, s.DataTo)
+
+	for _, sk := range skipped {
+		fmt.Fprintf(b, "- Not measured — %s: %s.\n", strings.Join(sk.names, ", "), sk.reason)
+	}
+	if len(skipped) > 0 {
+		b.WriteString("\n")
+	}
+
+	for _, f := range s.Findings {
+		fmt.Fprintf(b, "- **%s** — %s\n", f.Title, f.Detail)
+	}
+	if len(s.Findings) > 0 {
+		b.WriteString("\n")
+	}
+	if s.Verdict != "" {
+		fmt.Fprintf(b, "**%s.**\n\n", upperFirst(s.Verdict))
 	}
 }
 

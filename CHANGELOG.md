@@ -121,6 +121,15 @@ the CLI flags may all move.
   and beta.
 - Attribution by year, month, month-of-year, market regime and holding, plus
   drop-the-best-month and drop-the-best-five-days stress tests.
+- **`pyrite scenarios`.** Thirteen named historical windows — Black Monday
+  through the 2023 regional bank failures — each run on its own, with the
+  indicator warm-up and a year of trading loaded in front of it so the strategy
+  enters the window already positioned rather than in cash. Reports return,
+  drawdown, the benchmark over the same dates and the excess, beside the S&P
+  500's own decline in that window as fixed reference data. Windows the data
+  cannot reach are listed with the reason rather than dropped, and losing
+  materially more than the benchmark in one of them is a finding. Also a
+  section in `pyrite report`.
 - Portfolio construction: minimum variance, maximum Sharpe, risk parity,
   hierarchical risk parity and inverse volatility, with Ledoit–Wolf shrinkage.
 - Market impact under the square-root law. The `daily-reversal` example
