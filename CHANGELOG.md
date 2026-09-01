@@ -31,6 +31,14 @@ the CLI flags may all move.
   measure and re-propose under a budget, while the harness withholds the test
   period. The `Candidate` type has no out-of-sample field, so a proposer cannot
   read what the struct does not hold.
+- **A research ledger that survives the session.** Deflated Sharpe and PBO
+  correct for the trials in one search; forty sweeps over the same symbols and
+  period across three weeks are thousands of trials that every one of those
+  statistics ignored. `pyrite ledger` records each run and sweep against a
+  dataset key — sorted symbols or index name, start, end, bar size — and
+  reports the cumulative trial count, the strategy versions tried, and the
+  score the best of that many tries reaches by luck alone. Runs and sweeps say
+  so when the history has outgrown them. `PYRITE_NO_LEDGER=1` turns it off.
 - **Research reports.** `pyrite report` runs the whole battery and writes one
   Markdown document, verdict first.
 - **Cost sensitivity.** `--cost-scan` re-runs at 0, 5, 20 and 50 bps and

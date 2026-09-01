@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"math"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -19,6 +20,7 @@ import (
 	"github.com/charbelkassab/pyrite/internal/app"
 	"github.com/charbelkassab/pyrite/internal/config"
 	"github.com/charbelkassab/pyrite/internal/engine"
+	"github.com/charbelkassab/pyrite/internal/ledger"
 	"github.com/charbelkassab/pyrite/internal/market"
 	"github.com/charbelkassab/pyrite/internal/mcp"
 	"github.com/charbelkassab/pyrite/internal/server"
@@ -43,6 +45,8 @@ Searching, because one backtest is one point in a space:
                                            the overfitting statistics
   pyrite walkforward "<strategy>"   choose on one period, report on the next
   pyrite improve "<strategy>"       guided search against a blind holdout
+  pyrite ledger                     how much searching each dataset has
+                                           already absorbed, across sessions
 
 Reference data:
   pyrite ingest edgar               point-in-time share counts, from SEC filings
@@ -70,6 +74,7 @@ Common flags:
   --offline     use synthetic data, no network, no keys
   --json        print machine readable output
 
+  ledger:       --dataset <key>  --reset [--yes]  --all
   run:          --cost-scan  re-run at 0, 5, 20 and 50 bps of slippage
                 --factors    regress the returns on market, size, value,
                              momentum and quality, and report what alpha is left
@@ -82,6 +87,9 @@ Model provider keys are read from the environment:
   OPENAI_API_KEY, CEREBRAS_API_KEY, KIMI_API_KEY (or MOONSHOT_API_KEY)
 A key is needed only to compile plain language. Everything else — including
 every search above — runs on --code-file with no key at all.
+
+Every run and sweep is counted in the research ledger, so the trial count
+outlives the session that produced it. PYRITE_NO_LEDGER=1 turns that off.
 
 Examples:
   pyrite serve --offline --open
@@ -135,6 +143,8 @@ func run() error {
 		return cmdReport(args)
 	case "examples":
 		return cmdExamples(args)
+	case "ledger":
+		return cmdLedger(args)
 	case "version", "-v", "--version":
 		fmt.Printf("pyrite %s\n", version)
 		return nil
@@ -413,12 +423,28 @@ func cmdRun(args []string) error {
 	}
 	fmt.Fprintf(os.Stderr, "\r%40s\r", "")
 
+	// One run is one trial against this dataset, and the ledger is the only
+	// place that number survives to be added to the next one.
+	note := recordInvocation(a.Cfg, ledger.Entry{
+		DatasetKey: ledger.DatasetKey(datasetOf(res.Spec)),
+		Strategy:   plan.Name,
+		CodeSHA256: res.Manifest.CodeSHA256,
+		Trials:     1,
+		Objective:  "sharpe",
+		BestScore:  res.Metrics.Sharpe,
+		// One trial has no spread. Recording a zero would claim the run
+		// found every configuration equally good, which it never looked.
+		ScoreSpread: engine.Ratio(math.NaN()),
+	})
+
 	if *asJSON {
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
+		printLedgerNote(note, true)
 		return enc.Encode(map[string]any{"plan": plan, "result": res})
 	}
 	printReport(plan, res)
+	printLedgerNote(note, false)
 
 	// The cost scan runs after the report because it is a separate question:
 	// not "how did this do" but "how much of that survives friction".

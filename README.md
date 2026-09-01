@@ -451,6 +451,40 @@ the best five days removed.
 </details>
 
 <details>
+<summary><strong>The searching itself</strong> — trials counted across sessions, not just within one</summary>
+
+<br>
+
+The deflated Sharpe and the probability of backtest overfitting both correct
+for how many combinations *one* search tried. Run forty sweeps over the same
+symbols and the same period across three weeks and you have performed thousands
+of trials, and every one of those statistics quietly assumed you started that
+morning.
+
+The ledger remembers. Every run and sweep is recorded against a dataset key —
+sorted symbols or index name, start, end, bar size — so the count follows the
+research problem rather than the session:
+
+```
+$ pyrite ledger
+
+  dataset                                    trials  sessions     best     luck  first      last
+  SPY:2019-01-02:2023-12-29:1d                  229         7     0.79     0.62  2026-08-31 2026-08-31
+```
+
+A run or sweep that is no longer the first says so:
+
+```
+you have now tried 229 configurations against this dataset across 7 sessions;
+a Sharpe below 0.62 is what the best of 229 tries reaches by luck alone
+```
+
+`pyrite ledger --dataset <key>` for one problem in full, `--reset` to start its
+count again, `PYRITE_NO_LEDGER=1` to keep no history at all.
+
+</details>
+
+<details>
 <summary><strong>Portfolio construction</strong> — beyond equal weight</summary>
 
 <br>
@@ -764,6 +798,8 @@ pyrite sweep "<strategy>"         every combination, plus a heatmap and
                                   the overfitting statistics
 pyrite walkforward "<strategy>"   choose on one period, report on the next
 pyrite improve "<strategy>"       guided search against a blind holdout
+pyrite ledger                     how much searching each dataset has already
+                                  absorbed, across every past session
 
 pyrite ingest edgar               point-in-time share counts, from SEC filings
 pyrite ingest index               point-in-time S&P 500 membership
@@ -782,7 +818,7 @@ Common flags: `--from`, `--to`, `--cash`, `--benchmark`, `--universe`,
 Per command: `run --cost-scan` · `sweep --param fast=10,20,50 --objective
 sharpe --csv out.csv` · `walkforward --train 504 --test 126 --embargo 200
 --anchored` · `improve --budget 6 --holdout 0.3 --goal "..."` · `report --out
-report.md`.
+report.md` · `ledger --dataset <key> --reset --yes`.
 
 A key is needed only to compile plain language. Every search above runs on
 `--code-file` or `--example` with none.
@@ -808,6 +844,7 @@ Everything has a sensible default. Override with environment variables or
 | `PYRITE_ROUTE_QUALITY` / `_BALANCED` / `_FAST` | auto | Model tier routing |
 | `PYRITE_<PROVIDER>_MODEL` | per provider | Model override |
 | `PYRITE_MAX_AI_CALLS` | `2000` | Per-run budget for `ai()` and `web()` |
+| `PYRITE_NO_LEDGER` | `false` | Stop counting trials across sessions |
 | `PYRITE_OFFLINE` | `false` | Synthetic data, no network |
 
 Ollama and LM Studio are detected automatically on their default ports.
