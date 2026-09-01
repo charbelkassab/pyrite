@@ -45,6 +45,17 @@ type Spec struct {
 	// in the flattering direction.
 	Interval market.Interval `json:"interval,omitempty"`
 
+	// Calendar is the market whose sessions every annualised figure is
+	// scaled by. Empty means infer it from the bars, which is what should
+	// normally happen: a series that prints on Saturdays did not come from
+	// an exchange with a 252-session year, and the data says so more
+	// reliably than the ticker does.
+	//
+	// Set it to overrule that inference — for a symbol whose file is
+	// unusual, or to score the same trades on two calendars and see the
+	// difference.
+	Calendar market.Calendar `json:"calendar,omitempty"`
+
 	Start market.Day `json:"start"`
 	End   market.Day `json:"end"`
 
@@ -106,6 +117,23 @@ func (s *Spec) ApplyDefaults() {
 	if s.Interval == "" || !s.Interval.Valid() {
 		s.Interval = market.DefaultInterval
 	}
+	if s.Calendar != "" && !s.Calendar.Valid() {
+		s.Calendar = ""
+	}
+}
+
+// Scale is how this spec converts per-bar statistics into annual ones.
+//
+// When the calendar is unset — which it is until a run has seen the bars —
+// the universe's tickers are the only evidence available, so a universe of
+// BTC-USD still annualises at 365 rather than silently at 252. A run
+// overwrites this with the classification taken from the data itself.
+func (s Spec) Scale() Scale {
+	cal := s.Calendar
+	if !cal.Valid() {
+		cal, _ = market.CalendarForSymbols(s.Universe)
+	}
+	return ScaleOn(s.Interval, cal, s.RiskFreeRate)
 }
 
 // PositionSnapshot is a position as it stood at a day's close.
@@ -200,6 +228,10 @@ type Result struct {
 	// Critique is the deterministic assessment of this result: what is wrong
 	// with it, with the numbers that say so.
 	Critique Critique `json:"critique"`
+	// Borrow is the short side's own accounting: what the borrow cost per
+	// name, and which shorts were refused for want of a locate. Nil when the
+	// run never went short, which is most of them.
+	Borrow *BorrowReport `json:"borrow,omitempty"`
 	// DataQuality lists disqualifying defects found in the price data this
 	// run was built on. Every statistic above is downstream of those bars,
 	// so a defect here outranks anything the strategy did. `pyrite audit`
@@ -309,6 +341,13 @@ type Engine struct {
 	// dataDefects holds the disqualifying data-quality findings from the
 	// bars this run loaded.
 	dataDefects []market.Finding
+	// calendars are every distinct trading calendar the universe turned out
+	// to hold. More than one is worth reporting; spec.Calendar carries the
+	// widest, which is the one every annualised figure is scaled by.
+	calendars []market.Calendar
+	// calendarPinned records that the caller chose the calendar, so no
+	// amount of loaded data overrules it.
+	calendarPinned bool
 }
 
 // stopOrder is a standing exit registered by the strategy.
@@ -322,12 +361,18 @@ type stopOrder struct {
 func New(spec Spec, store *market.Store) *Engine {
 	spec.ApplyDefaults()
 	return &Engine{
-		spec:       spec,
-		store:      store,
-		MaxAICalls: 2000,
-		state:      map[string]any{},
-		stops:      map[string]*stopOrder{},
-		warnSeen:   map[string]bool{},
+		spec:  spec,
+		store: store,
+		// Whether the caller named a calendar has to be remembered here.
+		// Data is loaded twice when setup() picks its own universe, and by
+		// the second pass spec.Calendar holds the first pass's inference —
+		// which would then look like an instruction and freeze a crypto run
+		// on whatever the empty universe defaulted to.
+		calendarPinned: spec.Calendar.Valid(),
+		MaxAICalls:     2000,
+		state:          map[string]any{},
+		stops:          map[string]*stopOrder{},
+		warnSeen:       map[string]bool{},
 	}
 }
 
@@ -571,6 +616,7 @@ func (e *Engine) Run(ctx context.Context) (*Result, error) {
 		res.Metrics.AddBenchmarkStats(res.Curve, benchCurve, e.scale())
 	}
 
+	res.Borrow = buildBorrowReport(e.portfolio, res.Fills)
 	res.Trades = BuildTrades(res.Fills, e.series)
 	res.TradeStats = ComputeTradeStats(res.Trades)
 	// Built here rather than behind a flag because the critique reads it and
@@ -607,7 +653,37 @@ func (e *Engine) Run(ctx context.Context) (*Result, error) {
 
 // scale is how this run converts per-bar statistics into annual ones.
 func (e *Engine) scale() Scale {
-	return ScaleFor(e.spec.Interval, e.spec.RiskFreeRate)
+	return e.spec.Scale()
+}
+
+// resolveCalendar settles which market's sessions this run annualises by.
+//
+// It runs after the data is loaded, because the bars are better evidence than
+// the ticker: a Saturday print says the instrument trades at weekends whatever
+// the file is called. An explicit spec.Calendar overrules both, and is left
+// alone.
+func (e *Engine) resolveCalendar() {
+	if e.calendarPinned {
+		e.calendars = []market.Calendar{e.spec.Calendar}
+		return
+	}
+	cal, seen := market.CalendarForSeries(e.series)
+	e.spec.Calendar, e.calendars = cal, seen
+	if len(seen) < 2 {
+		return
+	}
+	// The universe spans more than one market. The curve is marked once per
+	// session in the union of their calendars, so the widest is the right
+	// divisor — but it is not a free choice, and the reader should know the
+	// book carries a stale mark on its exchange-listed names every weekend.
+	names := make([]string, 0, len(seen))
+	for _, c := range seen {
+		names = append(names, c.String())
+	}
+	e.warnOnce("mixed-calendars", fmt.Sprintf("the universe mixes trading calendars (%s), so "+
+		"every annualised figure is scaled by the widest of them, %s. The names that do "+
+		"not trade at weekends are marked at a stale price on those sessions.",
+		strings.Join(names, " and "), cal.Describe()))
 }
 
 // activeParams reports the value in force for every declared parameter.
@@ -827,7 +903,12 @@ func (e *Engine) loadData(ctx context.Context) error {
 			// Warm-up is counted in bars. At intraday sizes that is a
 			// fraction of a session, so converting through calendar days
 			// the way the daily path does would ask for far too little.
-			perSession := e.spec.Interval.PeriodsPerYear() / TradingDaysPerYear
+			// A session on a market that never closes is nearly four times
+			// as long as a US one, so the calendar has to be guessed from
+			// the tickers here: the bars that would settle it are what this
+			// arithmetic is deciding how many of to fetch.
+			guess, _ := market.CalendarForSymbols(symbols)
+			perSession := e.spec.Interval.BarsPerSession(guess)
 			sessions := int(float64(warmupDays)/math.Max(perSession, 1)) + 2
 			loadFrom = e.spec.Start.Date().Add(-(sessions*7/5 + 5))
 		} else {
@@ -878,6 +959,7 @@ func (e *Engine) loadData(ctx context.Context) error {
 		e.spec.Start = e.days[i]
 	}
 
+	e.resolveCalendar()
 	e.auditData(loadFrom)
 	e.precomputeCalendarFlags()
 	return nil

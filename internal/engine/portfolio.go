@@ -103,7 +103,13 @@ type Costs struct {
 	// SlippageBps moves the fill price against the trader, in basis points.
 	SlippageBps float64 `json:"slippage_bps"`
 	// ShortBorrowAnnualPct is the annual borrow cost charged on short value.
+	// It is the general collateral rate: what a broad, easily located name
+	// costs, and what everything is charged when Borrow says nothing else.
 	ShortBorrowAnnualPct float64 `json:"short_borrow_annual_pct"`
+	// Borrow, when set, prices the short side per name and can refuse a
+	// locate outright. Nil charges ShortBorrowAnnualPct on everything and
+	// refuses nothing, which is what this engine did before it existed.
+	Borrow *BorrowSchedule `json:"borrow,omitempty"`
 	// CashAnnualPct is interest earned on idle cash.
 	CashAnnualPct float64 `json:"cash_annual_pct"`
 
@@ -161,10 +167,23 @@ type Portfolio struct {
 	// the model.
 	Impact func(symbol string, shares float64) float64
 
+	// Borrow prices the short side per name and decides what may be shorted
+	// at all. Nil charges Costs.ShortBorrowAnnualPct on everything.
+	Borrow *BorrowSchedule
+
 	realized   float64
 	commission float64
 	slippage   float64
 	borrowCost float64
+	// Per-name borrow accounting. A single total cannot answer the question
+	// a short book turns on — which name cost the money — and the sessions
+	// count is what shows the fee accrued on the position rather than on the
+	// trade.
+	borrowBySym    map[string]float64
+	borrowSessions map[string]int
+	// Shorts refused for want of a locate, by name.
+	borrowRefused       map[string]int
+	borrowRefusedShares map[string]float64
 }
 
 // NewPortfolio creates a portfolio with the given starting cash.
@@ -173,6 +192,7 @@ func NewPortfolio(cash float64, costs Costs) *Portfolio {
 		Cash:            cash,
 		Positions:       map[string]*Position{},
 		Costs:           costs,
+		Borrow:          costs.Borrow,
 		AllowFractional: true,
 		AllowShort:      true,
 		MaxLeverage:     1.0,
@@ -276,6 +296,10 @@ func (p *Portfolio) Execute(day market.Day, symbol string, shares, refPrice floa
 		}
 	}
 
+	if shares = p.locate(symbol, pos.Shares, shares); shares == 0 {
+		return nil, nil
+	}
+
 	// Slippage always moves against the trader, and so does impact: both are
 	// the cost of demanding liquidity rather than supplying it.
 	slipRate := p.Costs.SlippageBps / 10000.0
@@ -374,27 +398,82 @@ func (p *Portfolio) Execute(day market.Day, symbol string, shares, refPrice floa
 	}, nil
 }
 
-// AccrueFinancing charges short borrow and credits cash interest for one day.
-func (p *Portfolio) AccrueFinancing(prices map[string]float64, tradingDaysPerYear float64) {
-	if tradingDaysPerYear <= 0 {
-		tradingDaysPerYear = 252
+// locate applies the borrow schedule to an order, returning the quantity that
+// may actually trade.
+//
+// A short in a name with no locate is refused rather than charged. That is
+// the more honest of the two, and it is the only one that produces a result a
+// reader can act on: a punitive fee still books the position, still runs it,
+// and still reports the profit from a trade nobody could have put on. An
+// order that would flip a long into an unborrowable short is cut back to
+// flat, because selling what is already owned needs no locate at all.
+func (p *Portfolio) locate(symbol string, held, shares float64) float64 {
+	if shares >= 0 || held+shares >= -1e-9 {
+		return shares
 	}
-	if p.Costs.ShortBorrowAnnualPct > 0 {
-		var shortValue float64
-		for sym, pos := range p.Positions {
-			if pos.Shares >= 0 {
-				continue
-			}
-			if px, ok := prices[sym]; ok {
-				shortValue += math.Abs(pos.Shares) * px
-			}
+	if _, ok := p.Borrow.Rate(symbol, p.Costs.ShortBorrowAnnualPct); ok {
+		return shares
+	}
+	allowed := 0.0
+	if held > 0 {
+		allowed = -held
+	}
+	if p.borrowRefused == nil {
+		p.borrowRefused = map[string]int{}
+		p.borrowRefusedShares = map[string]float64{}
+	}
+	p.borrowRefused[symbol]++
+	p.borrowRefusedShares[symbol] += math.Abs(shares - allowed)
+	return allowed
+}
+
+// AccrueFinancing charges short borrow and credits cash interest for one day.
+//
+// The fee is charged per name on the position held, not on the trade that
+// opened it: a short carried for a year costs a year of borrow whether it was
+// entered once or a hundred times. periodsPerYear is the run's own bar count,
+// so a crypto book paying 365 daily charges and an equity book paying 252 both
+// end the year having paid the annual rate once.
+func (p *Portfolio) AccrueFinancing(prices map[string]float64, periodsPerYear float64) {
+	if periodsPerYear <= 0 {
+		periodsPerYear = TradingDaysPerYear
+	}
+	// Summed over the sorted symbols rather than over the map, for the same
+	// reason MarketValue is: floating-point addition is not associative, and
+	// Go's map order is randomised, so ranging here made two identical runs
+	// differ in the last place of the borrow bill.
+	for _, sym := range p.sortedSymbols() {
+		pos := p.Positions[sym]
+		if pos.Shares >= 0 {
+			continue
 		}
-		cost := shortValue * p.Costs.ShortBorrowAnnualPct / tradingDaysPerYear
+		px, ok := prices[sym]
+		if !ok || px <= 0 {
+			continue
+		}
+		rate, available := p.Borrow.Rate(sym, p.Costs.ShortBorrowAnnualPct)
+		if !available {
+			// The position predates the schedule saying the name cannot be
+			// borrowed — a rate file loaded mid-book, or a locate pulled.
+			// General collateral is the least wrong thing to charge, and
+			// charging nothing would be the most wrong.
+			rate = p.Costs.ShortBorrowAnnualPct
+		}
+		if p.borrowSessions == nil {
+			p.borrowSessions = map[string]int{}
+			p.borrowBySym = map[string]float64{}
+		}
+		p.borrowSessions[sym]++
+		cost := math.Abs(pos.Shares) * px * borrowPerPeriod(rate, periodsPerYear)
+		if cost == 0 {
+			continue
+		}
 		p.Cash -= cost
 		p.borrowCost += cost
+		p.borrowBySym[sym] += cost
 	}
 	if p.Costs.CashAnnualPct > 0 && p.Cash > 0 {
-		p.Cash += p.Cash * p.Costs.CashAnnualPct / tradingDaysPerYear
+		p.Cash += p.Cash * p.Costs.CashAnnualPct / periodsPerYear
 	}
 }
 

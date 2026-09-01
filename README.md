@@ -689,8 +689,11 @@ silently inflates returns. You can switch to close fills for comparison with
 published backtests that do it, and the interface labels that choice
 optimistic.
 
-**Modelled:** commissions, slippage (5 bps by default, not zero), short borrow,
-splits and dividends, cash drag, next-open fills, and — with `--impact 1` —
+**Modelled:** commissions, slippage (5 bps by default, not zero), short borrow
+(per name, with an unavailable-to-borrow case that refuses the trade rather than
+charging for one nobody could have made), splits and dividends, cash drag,
+next-open fills, per-instrument trading calendars so a crypto series annualises
+at 365 rather than 252, and — with `--impact 1` —
 market impact under the square-root law, so a large order pays for the
 liquidity it demands. That last one changes results more than anything else
 here: the daily reversal above returns **−15.1% on $100,000 and −99.6% on
@@ -814,8 +817,8 @@ written afterwards, so it knows how the period ended — a milder bias, but a
 real one, and the run says so.
 
 **Not modelled:** taxes, prices and stops that trigger between bars, options,
-futures roll, market impact unless you enable it, borrow availability, tick
-data, the order book.
+futures roll, market impact unless you enable it, the borrow rate of any name
+not in a supplied borrow file, tick data, the order book.
 
 And the ordinary one: past performance says very little about future returns,
 an overfitted backtest says nothing at all, and it is easy to produce one by

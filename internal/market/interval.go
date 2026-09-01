@@ -32,40 +32,26 @@ type intervalSpec struct {
 	// duration is the nominal span of one bar. For a month it is an average,
 	// which is only used for ordering and for warm-up estimates.
 	duration time.Duration
-	// periodsPerYear is the annualisation factor. For intraday sizes it is
-	// trading sessions times bars per session, not calendar time: a strategy
-	// is not exposed overnight in the same way it is during the session, and
-	// scaling by wall-clock hours would overstate volatility badly.
-	periodsPerYear float64
+	// fixedPerYear is the annualisation factor for a size that does not
+	// depend on how long a session is or how many of them a year holds:
+	// there are 52 weeks and 12 months in a year on every calendar. Zero
+	// means the factor is derived from the calendar instead.
+	fixedPerYear float64
 	// intraday marks a size where one calendar day holds several bars.
 	intraday bool
 	// aliases are other spellings accepted from a user.
 	aliases []string
 }
 
-// tradingSessionsPerYear is the conventional 252.
-const tradingSessionsPerYear = 252.0
-
-// barsPerSession is 6.5 hours of US regular trading.
-const minutesPerSession = 390.0
-
 var intervals = map[Interval]intervalSpec{
-	Interval1m: {time.Minute, tradingSessionsPerYear * minutesPerSession, true,
-		[]string{"1min", "minute", "m1"}},
-	Interval5m: {5 * time.Minute, tradingSessionsPerYear * minutesPerSession / 5, true,
-		[]string{"5min", "m5"}},
-	Interval15m: {15 * time.Minute, tradingSessionsPerYear * minutesPerSession / 15, true,
-		[]string{"15min", "m15"}},
-	Interval30m: {30 * time.Minute, tradingSessionsPerYear * minutesPerSession / 30, true,
-		[]string{"30min", "m30"}},
-	Interval1h: {time.Hour, tradingSessionsPerYear * minutesPerSession / 60, true,
-		[]string{"60m", "hour", "hourly", "h1"}},
-	Interval1d: {24 * time.Hour, tradingSessionsPerYear, false,
-		[]string{"d", "day", "daily", "1day"}},
-	Interval1wk: {7 * 24 * time.Hour, 52, false,
-		[]string{"w", "1w", "week", "weekly"}},
-	Interval1mo: {30 * 24 * time.Hour, 12, false,
-		[]string{"mo", "1month", "month", "monthly"}},
+	Interval1m:  {duration: time.Minute, intraday: true, aliases: []string{"1min", "minute", "m1"}},
+	Interval5m:  {duration: 5 * time.Minute, intraday: true, aliases: []string{"5min", "m5"}},
+	Interval15m: {duration: 15 * time.Minute, intraday: true, aliases: []string{"15min", "m15"}},
+	Interval30m: {duration: 30 * time.Minute, intraday: true, aliases: []string{"30min", "m30"}},
+	Interval1h:  {duration: time.Hour, intraday: true, aliases: []string{"60m", "hour", "hourly", "h1"}},
+	Interval1d:  {duration: 24 * time.Hour, aliases: []string{"d", "day", "daily", "1day"}},
+	Interval1wk: {duration: 7 * 24 * time.Hour, fixedPerYear: 52, aliases: []string{"w", "1w", "week", "weekly"}},
+	Interval1mo: {duration: 30 * 24 * time.Hour, fixedPerYear: 12, aliases: []string{"mo", "1month", "month", "monthly"}},
 }
 
 // ParseInterval resolves a user-supplied bar size.
@@ -107,16 +93,44 @@ func (i Interval) Duration() time.Duration {
 }
 
 // PeriodsPerYear is the annualisation factor for statistics computed on bars
-// of this size.
+// of this size, on the US equity calendar.
 //
 // Getting this wrong is not cosmetic: a Sharpe ratio computed on 1-minute bars
 // and annualised as though they were daily is out by a factor of about twenty,
 // and it is out in the flattering direction.
 func (i Interval) PeriodsPerYear() float64 {
-	if s, ok := intervals[i]; ok {
-		return s.periodsPerYear
+	return i.PeriodsPerYearOn(CalendarUSEquity)
+}
+
+// PeriodsPerYearOn is the annualisation factor for bars of this size on a
+// given trading calendar.
+//
+// For intraday sizes it is sessions times bars per session, not calendar time:
+// a strategy is not exposed overnight the way it is during the session, and
+// scaling by wall-clock hours would overstate volatility badly. On a market
+// that never closes the two coincide, because the session is the day.
+func (i Interval) PeriodsPerYearOn(c Calendar) float64 {
+	s, ok := intervals[i]
+	if !ok {
+		return c.SessionsPerYear()
 	}
-	return tradingSessionsPerYear
+	if s.fixedPerYear > 0 {
+		return s.fixedPerYear
+	}
+	if !s.intraday {
+		return c.SessionsPerYear()
+	}
+	mins := float64(s.duration / time.Minute)
+	if mins < 1 {
+		mins = 1
+	}
+	return c.SessionsPerYear() * c.MinutesPerSession() / mins
+}
+
+// BarsPerSession is how many bars of this size fit in one session of a
+// calendar. It is 1 for daily bars and less than 1 for coarser ones.
+func (i Interval) BarsPerSession(c Calendar) float64 {
+	return i.PeriodsPerYearOn(c) / c.SessionsPerYear()
 }
 
 // Intraday reports whether one calendar day holds several bars of this size.

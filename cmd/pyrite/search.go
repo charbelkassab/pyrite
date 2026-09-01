@@ -926,7 +926,7 @@ func cmdReport(args []string) error {
 	//    document.
 	fmt.Fprintf(os.Stderr, "decomposing against factors...\n")
 	if fx, err := engine.AnalyseFactors(s.ctx, rep.Run.Curve, s.app.Store, s.spec.Interval,
-		engine.ScaleFor(s.spec.Interval, s.spec.RiskFreeRate), nil); err == nil {
+		rep.Run.Spec.Scale(), nil); err == nil {
 		rep.Factors = fx
 	} else {
 		fmt.Fprintf(os.Stderr, "  skipped: %s\n", truncate(err.Error(), 70))

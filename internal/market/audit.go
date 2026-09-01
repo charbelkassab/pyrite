@@ -251,13 +251,13 @@ func (a *auditor) add(sev Severity, kind, title, format string, args ...any) *Fi
 }
 
 // classify decides whether the US session calendar applies to this symbol.
+//
+// The test lives in tradingcalendar.go because the annualisation factor is
+// chosen by the same one. A series audited as crypto and annualised as equity
+// would be the worst of both.
 func (a *auditor) classify() {
-	for _, b := range a.bars {
-		if IsWeekend(b.Date) {
-			a.weekendBars++
-		}
-	}
-	a.continuous = float64(a.weekendBars) > continuousWeekendShare*float64(len(a.bars))
+	a.weekendBars = weekendBars(a.bars)
+	a.continuous = continuousWeekend(len(a.bars), a.weekendBars)
 }
 
 // --- the checks ----------------------------------------------------------

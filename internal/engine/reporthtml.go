@@ -1148,9 +1148,9 @@ func (r *Report) buildMechanics(d *htmlDoc) {
 	add("Data", fmt.Sprintf("%s, %s, %d sessions",
 		m.DataProvider, plural(len(m.Coverage), "symbol"), m.CalendarDays))
 	add("Fills", fillText(m.Fill))
-	add("Costs", fmt.Sprintf("%s bps slippage, %s%% commission, %s%% short borrow",
-		numSafe(m.Costs.SlippageBps, 0), numSafe(m.Costs.CommissionPct*100, 2),
-		numSafe(m.Costs.ShortBorrowAnnualPct*100, 1)))
+	add("Annualised on", fmt.Sprintf("the %s calendar, %s bars a year",
+		m.TradingCalendar.Label(), numSafe(m.PeriodsPerYear, 0)))
+	add("Costs", costsText(m.Costs, m.BorrowNames))
 	add("Starting capital", moneySafe(m.InitialCash))
 	t.Rows = append(t.Rows, []cell{rowHead("Code hash"),
 		{Text: shortHash(m.CodeSHA256), Class: "wrap mono"}})

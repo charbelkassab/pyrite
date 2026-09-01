@@ -488,7 +488,7 @@ func runScenario(ctx context.Context, run *ScenarioRun, base Spec, store *market
 		run.Error = "the window holds no sessions once the data is loaded"
 		return
 	}
-	sc := ScaleFor(spec.Interval, spec.RiskFreeRate)
+	sc := spec.Scale()
 	ps := periodStats(run.Name, seg, base0, sc)
 
 	run.Return = Ratio(ps.Return)

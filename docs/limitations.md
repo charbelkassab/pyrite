@@ -305,6 +305,36 @@ Two failure modes appear often enough to name:
   the first crossing *after* the backtest starts. If the condition was already
   true on day one, it will sit in cash until the next flip.
 
+## Trading calendars
+
+Everything here was built on US equities, where a year holds 252 sessions.
+That figure decides every annualised number — volatility, Sharpe, Sortino,
+rolling statistics — and it is wrong for anything that keeps different hours.
+Crypto trades 365 days a year; spot FX trades about 261.
+
+A run infers its calendar from the bars it loaded rather than from the ticker:
+a series that prints on Saturdays came from a market that trades on Saturdays,
+whatever the file is called. `--calendar` overrules that, which is how the same
+trades can be scored both ways to see what the divisor is worth. The choice is
+printed under the date range and recorded in the manifest, because two runs
+that differ only in this report Sharpes 20% apart.
+
+Two limits are worth knowing:
+
+**FX is never inferred.** A weekday-only series that prints on US holidays is
+either spot FX or a vendor padding its calendar, and the dates cannot tell the
+two apart. FX is taken from an `=X` ticker or from `--calendar fx`, never
+guessed — a wrong answer would treat a six-and-a-half-hour session as a
+twenty-four-hour one and multiply an intraday annualisation factor by nearly
+four.
+
+**A mixed universe is annualised by its widest calendar.** Holding SPY and
+BTC-USD together produces an equity curve marked on the union of their
+sessions, so it is sampled 365 times a year and 365 is the arithmetically
+correct divisor. The equities in it are then marked at a stale price every
+Saturday and Sunday, and no choice of divisor repairs that. The run warns, and
+the critique carries a note.
+
 ## What is not modelled
 
 | | |
@@ -313,7 +343,7 @@ Two failure modes appear often enough to name:
 | **Intraday prices** | Daily bars only. A stop between the open and close triggers at the modelled level, not the real tick |
 | **Options and futures** | Not supported. Futures continuation and roll are not modelled |
 | **Market impact** | Fills assume your order does not move the price |
-| **Borrow availability** | Shorts always fill; a real hard-to-borrow name may not be available at all |
+| **Borrow availability, unpriced** | A name with no entry in a borrow file is assumed borrowable at the general collateral rate. Supplying one is the only way the engine knows otherwise |
 | **Delistings and spin-offs** | Not modelled; a symbol simply stops having data |
 | **Dividends as cash** | Reinvested implicitly via adjusted closes, not paid into the cash balance |
 | **After-hours and gaps** | An overnight gap through a stop fills at the stop level, which is optimistic |
@@ -325,7 +355,7 @@ Two failure modes appear often enough to name:
 | **Next-open fills** | Orders placed on day D fill at D+1's open. This is the default and the only lookahead-free choice |
 | **Slippage** | 5 basis points against you by default, configurable — not zero |
 | **Commission** | Per-share, percentage and per-order minimum, all configurable |
-| **Short borrow** | Charged daily at an annual rate on the value of short positions |
+| **Short borrow** | Charged per session held, at an annual rate on the value of the short. Per-name rates and unavailable-to-borrow names come from `--borrow-file`; without one every short pays the same general collateral rate, and the critique says so |
 | **Splits and dividends** | Via adjusted closes; raw closes retained where share counts require them |
 | **Cash drag** | Uninvested cash earns nothing unless you set a rate |
 | **Partial fills on exhausted cash** | Orders are reduced rather than silently overdrawing, and a warning is recorded |

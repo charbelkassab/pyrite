@@ -346,7 +346,7 @@ func RunSweep(ctx context.Context, ss SweepSpec, store *market.Store, progress S
 		res.Best = append(res.Best, k.res)
 	}
 	res.Robustness = AssessRobustness(res.Rows, ss.Objective)
-	sc := ScaleFor(ss.Base.Interval, ss.Base.RiskFreeRate)
+	sc := ss.Base.Scale()
 	if keepReturns {
 		// One aligned matrix, three statistics. PBO asks whether selecting
 		// among the trials transfers; the reality check asks whether the best

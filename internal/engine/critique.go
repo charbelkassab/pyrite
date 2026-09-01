@@ -267,6 +267,16 @@ func Criticise(res *Result) Critique {
 				"Trading costs scale with turnover, so this omission flatters exactly the "+
 				"strategies that trade most.", m.Turnover)
 	}
+	addBorrowFindings(res, add)
+	if len(res.Manifest.Calendars) > 1 {
+		add(SeverityNote, "the universe mixes trading calendars",
+			"This book holds instruments on %s. The equity curve is marked on the union "+
+				"of their sessions and annualised by the widest, %s, so the names that "+
+				"do not trade at weekends carry a stale price on those marks. Every "+
+				"annualised figure here is right about the sampling and approximate "+
+				"about the exposure.",
+			joinList(res.Manifest.Calendars), res.Manifest.TradingCalendar.Describe())
+	}
 	if res.Spec.Costs.ImpactCoefficient == 0 && m.Turnover > 1 {
 		add(SeverityNote, "position size is free",
 			"No market impact was modelled, so a $10m order costs the same fraction as "+

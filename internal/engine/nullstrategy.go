@@ -259,7 +259,7 @@ func RunNullStrategy(ctx context.Context, res *Result, store *market.Store, tria
 	if mkt == nil {
 		return newNullStrategy()
 	}
-	sc := ScaleFor(res.Spec.Interval, res.Spec.RiskFreeRate)
+	sc := res.Spec.Scale()
 	ns := CompareToNullStrategies(res.Curve, mkt, costFraction(res), sc, trials, seed)
 	ns.ReportedSharpe = res.Metrics.Sharpe
 	return ns
