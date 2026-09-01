@@ -184,15 +184,31 @@ func fmtInt(v int) string {
 }
 
 func fmtFloat1(v float64) string {
-	whole := int(v)
-	frac := int(math.Abs(v-float64(whole))*10 + 0.5)
+	// Rounded on the magnitude and signed afterwards. Truncating a negative
+	// towards zero first and then carrying the rounded tenth turns -9.98
+	// into -8.0.
+	neg := v < 0
+	a := math.Abs(v)
+	whole := int(a)
+	frac := int((a-float64(whole))*10 + 0.5)
 	if frac >= 10 {
 		whole++
 		frac = 0
 	}
-	return fmtInt(whole) + "." + fmtInt(frac)
+	out := fmtInt(whole) + "." + fmtInt(frac)
+	if neg && (whole != 0 || frac != 0) {
+		return "-" + out
+	}
+	return out
 }
 
+// fmtPercent1 keeps a decimal place. A ladder that ends at -99.6% is a
+// different fact from one that ends at -100%, and the whole-number form says
+// the account was wiped out when it was not.
+func fmtPercent1(frac float64) string { return fmtFloat1(frac*100) + "%" }
+
 func fmtPercent(frac float64) string {
-	return fmtInt(int(frac*100+0.5)) + "%"
+	// math.Round rather than adding a half and truncating: several of the
+	// verdicts this feeds report losses, and int(-15.0+0.5) is -14.
+	return fmtInt(int(math.Round(frac*100))) + "%"
 }

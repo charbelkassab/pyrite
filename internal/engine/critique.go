@@ -354,6 +354,28 @@ func Criticise(res *Result) Critique {
 		}
 	}
 
+	// The same objection as give-back, put on a clock. Give-back says the
+	// losers surrendered their paper profit; this says when, and therefore
+	// what holding period would have kept it.
+	//
+	// It fires only when the peak is early by a factor of three and more than
+	// half of it was handed back. Either alone is ordinary — a curve that
+	// drifts down slightly after its peak, or a peak two thirds of the way
+	// through the hold, describes most working strategies.
+	if d := res.Decay; d.Trades >= minDecayTrades && d.PeakBars > 0 &&
+		d.PeakReturn.Defined() && float64(d.PeakReturn) > 0 && d.GivenBack.Defined() {
+		peakBars, hold := float64(d.PeakBars), d.MeanBarsHeld-1
+		if given := float64(d.GivenBack); given > 0.5 && hold > peakBars*3 {
+			add(SeverityWarning, "the edge is gone long before the exit",
+				"The average trade peaks %.0f bars after entry at %.1f%% and is then held "+
+					"for %.0f, finishing at %.1f%% — %.0f%% of the peak handed back. The "+
+					"entry is finding something with a much shorter horizon than the exit "+
+					"rule assumes.",
+				peakBars, float64(d.PeakReturn)*100, hold,
+				float64(d.ExitReturn)*100, given*100)
+		}
+	}
+
 	sort.SliceStable(c.Findings, func(i, j int) bool {
 		return severityRank(c.Findings[i].Severity) < severityRank(c.Findings[j].Severity)
 	})

@@ -34,6 +34,13 @@ func reportFor(t *testing.T) *Report {
 	if err != nil {
 		t.Fatalf("cost scan: %v", err)
 	}
+	// A short ladder: the section under test renders whatever rungs it is
+	// given, and five runs of an eight-year backtest to prove that would be
+	// paid on every test run.
+	capacity, err := RunCapacity(context.Background(), spec, store, []float64{1e5, 1e8}, 1)
+	if err != nil {
+		t.Fatalf("capacity: %v", err)
+	}
 	factors, err := AnalyseFactors(context.Background(), run.Curve, store,
 		spec.Interval, ScaleFor(spec.Interval, spec.RiskFreeRate), nil)
 	if err != nil {
@@ -44,6 +51,7 @@ func reportFor(t *testing.T) *Report {
 		Title: "Test strategy", Prompt: "a moving average cross",
 		Generated: time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC),
 		Run:       run, Sweep: sw, WalkForward: wf, Costs: costs,
+		Capacity:    capacity,
 		Factors:     factors,
 		Bootstrap:   Bootstrap(run.Curve, 500, 21, 42),
 		Assumptions: []string{"trades at the next open"},
@@ -65,6 +73,10 @@ func TestReportContainsEverySection(t *testing.T) {
 		"## Where the return came from",
 		"## Which rules made the money",
 		"## How much survives friction",
+		"## How much money can this take",
+		"Friction is shown per dollar traded",
+		"## When the edge arrives, and when it goes",
+		"Bars after entry",
 		"## Is any of this alpha?",
 		"Alpha, annualised",
 		"Newey-West standard",

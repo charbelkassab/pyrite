@@ -83,6 +83,10 @@ Common flags:
   ledger:       --dataset <key>  --reset [--yes]  --all
   audit:        --csv-dir ./export   audit your own vendor CSVs
   run:          --cost-scan      re-run at 0, 5, 20 and 50 bps of slippage
+                --capacity       re-run from $100k to $1bn with market impact
+                                 on, and report the size the edge dies at
+                --decay          the average trade's cumulative return 1 to
+                                 40 bars after entry, and where it peaks
                 --factors        regress the returns on market, size, value,
                                  momentum and low volatility, and report what
                                  alpha is left
@@ -291,6 +295,11 @@ func cmdRun(args []string) error {
 	example := fs.String("example", "",
 		"run a bundled example; `pyrite examples` lists them")
 	costScan := fs.Bool("cost-scan", false, "also re-run at 0, 5, 20 and 50 bps of slippage")
+	capacity := fs.Bool("capacity", false,
+		"also re-run at $100k, $1m, $10m, $100m and $1bn with market impact on, and report "+
+			"the size at which the edge disappears")
+	decay := fs.Bool("decay", false,
+		"also report the average trade's cumulative return at fixed horizons after entry")
 	factors := fs.Bool("factors", false,
 		"also decompose the returns against ETF factor proxies and report the residual alpha")
 	nullStrategy := fs.Bool("null-strategy", false,
@@ -481,6 +490,22 @@ func cmdRun(args []string) error {
 		}
 		printCostScan(scan)
 	}
+	// Capacity asks the same question with the other variable moved: not how
+	// much survives a friction level somebody chose, but how much survives the
+	// friction the strategy causes itself once the account is large.
+	if *capacity {
+		ladder, err := engine.RunCapacity(ctx, spec, a.Store, nil, spec.Costs.ImpactCoefficient)
+		if err != nil {
+			return err
+		}
+		printCapacity(ladder)
+	}
+	// The decay curve needs no re-run: it is built from the round trips the
+	// backtest already produced, so the flag governs whether it is printed
+	// rather than whether it is computed.
+	if *decay {
+		printDecay(res.Decay)
+	}
 	// And the factor decomposition asks the third question: how much of it
 	// was the strategy rather than an exposure that already has a name.
 	if *factors {
@@ -592,6 +617,62 @@ func printCostScan(s *engine.CostScan) {
 	}
 	if s.Verdict != "" {
 		fmt.Printf("\n  %s\n", wrapIndent(s.Verdict, 74, "  "))
+	}
+}
+
+// printCapacity reports the same strategy at several account sizes.
+func printCapacity(c *engine.Capacity) {
+	fmt.Printf("\nHow much money can this take?\n")
+	fmt.Printf("  %-12s %14s %12s %12s %10s\n",
+		"Capital", "Return", "CAGR", "Sharpe", "Friction")
+	for _, p := range c.Points {
+		if p.Error != "" {
+			fmt.Printf("  %-12s %s\n", compactMoney(p.Capital), truncate(p.Error, 50))
+			continue
+		}
+		fmt.Printf("  %-12s %14s %12s %12s %10s\n", compactMoney(p.Capital),
+			pct(p.TotalReturn), pct(p.CAGR), ratio(p.Sharpe),
+			fmt.Sprintf("%.0f bps", p.CostBps))
+	}
+	fmt.Printf("\n  %-30s %14.2f\n", "Impact coefficient", c.ImpactCoefficient)
+	if c.ZeroReturnCapital.Defined() {
+		fmt.Printf("  %-30s %14s\n", "Largest size above zero",
+			compactMoney(float64(c.ZeroReturnCapital)))
+	}
+	if c.BenchmarkCapital.Defined() {
+		fmt.Printf("  %-30s %14s\n", "Largest size beating "+c.BenchmarkLabel,
+			compactMoney(float64(c.BenchmarkCapital)))
+	}
+	if c.Verdict != "" {
+		fmt.Printf("\n  %s\n", wrapIndent(c.Verdict, 74, "  "))
+	}
+}
+
+// printDecay reports when the average trade's edge arrived and when it went.
+func printDecay(d engine.SignalDecay) {
+	fmt.Printf("\nWhen does the edge arrive, and when does it go?\n")
+	if len(d.Points) == 0 {
+		reason := d.Verdict
+		if reason == "" {
+			reason = "no closed round trip had enough price history to measure"
+		}
+		fmt.Printf("  %s\n", wrapIndent(reason, 74, "  "))
+		return
+	}
+	fmt.Printf("  %-14s %14s %14s\n", "Bars", "Mean return", "Still open")
+	for _, p := range d.Points {
+		fmt.Printf("  %-14d %14s %14s\n", p.Bars, pct(p.MeanReturn),
+			fmt.Sprintf("%d of %d", p.StillOpen, d.Trades))
+	}
+	fmt.Printf("\n  %-30s %14s\n", "Peak",
+		fmt.Sprintf("%s at bar %d", pctOrNA(d.PeakReturn), d.PeakBars))
+	fmt.Printf("  %-30s %14s\n", "At the exit", pctOrNA(d.ExitReturn))
+	fmt.Printf("  %-30s %14s\n", "Average hold", fmt.Sprintf("%.1f bars", d.MeanBarsHeld))
+	if d.GivenBack.Defined() {
+		fmt.Printf("  %-30s %14s\n", "Given back by the exit", pct(float64(d.GivenBack)))
+	}
+	if d.Verdict != "" {
+		fmt.Printf("\n  %s\n", wrapIndent(d.Verdict, 74, "  "))
 	}
 }
 
@@ -829,6 +910,26 @@ func money(v float64) string {
 		return "-" + res
 	}
 	return res
+}
+
+// compactMoney renders an account size to two significant figures and a
+// suffix.
+//
+// A capacity ladder spans four orders of magnitude, and $1,000,000,000.00 in a
+// column beside $100,000.00 is read by counting digits. The interpolated
+// thresholds are estimates off five rungs, so the lost precision was never
+// there to begin with.
+func compactMoney(v float64) string {
+	switch a := math.Abs(v); {
+	case a >= 1e9:
+		return fmt.Sprintf("$%.1fbn", v/1e9)
+	case a >= 1e6:
+		return fmt.Sprintf("$%.1fm", v/1e6)
+	case a >= 1e3:
+		return fmt.Sprintf("$%.0fk", v/1e3)
+	default:
+		return fmt.Sprintf("$%.0f", v)
+	}
 }
 
 func pct(v float64) string { return fmt.Sprintf("%.2f%%", v*100) }
