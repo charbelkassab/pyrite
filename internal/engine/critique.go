@@ -155,6 +155,59 @@ func Criticise(res *Result) Critique {
 		}
 	}
 
+	// The same question asked of the rules rather than the holdings, which
+	// is the version with something to do about it at the end of it.
+	//
+	// Only entry reasons are judged. A stop closes losing trades and nothing
+	// else, so "the stop loses money" would fire on every run that has one
+	// and would be a fact about arithmetic rather than about the strategy.
+	if entries := res.Reasons.Table().ByEntry; len(entries) > 1 {
+		// Ten round trips is half the threshold applied to the run as a
+		// whole above. A rule is a smaller claim than a strategy, and a
+		// condition that has lost money ten times is worth naming while the
+		// total is still noisy — the count is quoted so the reader can
+		// discount it accordingly.
+		const enoughToJudge = 10
+		closed := res.TradeStats.Closed
+		var dominant, worst *ReasonStats
+		for i := range entries {
+			e := &entries[i]
+			if e.NetPnL >= 0 || e.Trades < enoughToJudge {
+				continue
+			}
+			if closed > 0 && float64(e.Trades)/float64(closed) > 0.6 &&
+				(dominant == nil || e.Trades > dominant.Trades) {
+				dominant = e
+			}
+			if worst == nil || e.NetPnL < worst.NetPnL {
+				worst = e
+			}
+		}
+		if dominant != nil {
+			add(SeverityWarning, "most of the trading is a rule that loses money",
+				"%q opened %d of the %d closed round trips (%.0f%%) and lost %s over them "+
+					"at a %.0f%% win rate. Whatever else the strategy does, this is most "+
+					"of what it does.",
+				dominant.Reason, dominant.Trades, closed,
+				float64(dominant.Trades)/float64(closed)*100,
+				money(-dominant.NetPnL), dominant.WinRate*100)
+		}
+		if worst != nil && worst != dominant {
+			// What the rest of the book did without it, said in the direction
+			// it actually went: "made $-6.2k" is a sentence no one writes.
+			rest := SumNetPnL(entries) - worst.NetPnL
+			others := fmt.Sprintf("made %s between them", money(rest))
+			if rest < 0 {
+				others = fmt.Sprintf("lost %s between them", money(-rest))
+			}
+			add(SeverityNote, "one entry rule is dead weight",
+				"%q lost %s over %d round trips at a %.0f%% win rate; the other entry "+
+					"rules %s. Deleting it is not the same as adding that back — the "+
+					"capital it tied up was not free — but it is the first thing to try.",
+				worst.Reason, money(-worst.NetPnL), worst.Trades, worst.WinRate*100, others)
+		}
+	}
+
 	// --- What does the return distribution look like? --------------------
 
 	r := res.Risk

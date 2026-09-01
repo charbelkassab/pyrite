@@ -179,6 +179,10 @@ type Result struct {
 	Risk RiskMetrics `json:"risk"`
 	// Attribution decomposes the result by period, regime and holding.
 	Attribution Attribution `json:"attribution"`
+	// Reasons attributes the same realised P&L to the rule that opened and
+	// closed each round trip. It is the decomposition an author can act on:
+	// a symbol cannot be switched off, an entry condition can.
+	Reasons ReasonAttribution `json:"reasons"`
 	// Rolling is a trailing-window view of Sharpe, volatility and beta.
 	Rolling []RollingPoint `json:"rolling,omitempty"`
 	// Manifest records everything needed to judge whether a re-run is
@@ -570,6 +574,7 @@ func (e *Engine) Run(ctx context.Context) (*Result, error) {
 		res.Risk.AddCapture(res.Curve, benchCurve)
 	}
 	res.Attribution = ComputeAttribution(res.Curve, res.Trades, benchCurve, e.scale())
+	res.Reasons = ComputeReasonAttribution(res.Trades)
 	// Half a trading year: long enough for the statistic to mean something,
 	// short enough to show a regime change while it is happening. On
 	// intraday bars that is a lot of bars, so it is capped at a fifth of the

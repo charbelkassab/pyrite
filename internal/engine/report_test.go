@@ -63,6 +63,7 @@ func TestReportContainsEverySection(t *testing.T) {
 		"## How much of this is the search?",
 		"Expected best from luck alone",
 		"## Where the return came from",
+		"## Which rules made the money",
 		"## How much survives friction",
 		"## Is any of this alpha?",
 		"Alpha, annualised",
@@ -153,5 +154,70 @@ func TestPluralIsGrammatical(t *testing.T) {
 	}
 	if got := plural(0, "symbol"); got != "0 symbols" {
 		t.Errorf("got %q", got)
+	}
+}
+
+func TestReportAttributesPnLToTheRules(t *testing.T) {
+	spec := baseSpec(`
+		function onDay(ctx) {
+			const f = ctx.sma("AAPL", 10), s = ctx.sma("AAPL", 50);
+			if (f === null || s === null) return;
+			if (f > s && !ctx.hasPosition("AAPL")) {
+				ctx.buy("AAPL", { pctCash: 0.95 }, "10 day crossed above 50 day");
+			} else if (f < s && ctx.hasPosition("AAPL")) {
+				ctx.close("AAPL", "the trend broke");
+			}
+		}
+	`)
+	spec.Universe = []string{"AAPL"}
+	spec.Start, spec.End = "2016-01-05", "2023-12-29"
+	run, err := New(spec, newTestStore(t)).Run(context.Background())
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	doc := (&Report{Title: "Rules", Run: run, Generated: time.Now()}).Markdown()
+
+	for _, want := range []string{
+		"## Which rules made the money",
+		"Reasons are grouped",
+		"| Entry rule | Net P&L |",
+		"| Exit rule | Net P&L |",
+		"10 day crossed above 50 day",
+		"the trend broke",
+		"both sum to",
+	} {
+		if !strings.Contains(doc, want) {
+			t.Errorf("the rule section is missing %q", want)
+		}
+	}
+	if strings.Contains(doc, "%!") {
+		t.Error("a formatting verb went unfilled")
+	}
+}
+
+func TestReportSaysWhenNoOrderGaveAReason(t *testing.T) {
+	// ctx.buy() and ctx.sell() take a reason and default to none, so a
+	// strategy can be entirely silent about itself. The section then has to
+	// explain its own emptiness rather than print two rows of the bucket.
+	spec := baseSpec(`
+		function onDay(ctx) {
+			const f = ctx.sma("AAPL", 10), s = ctx.sma("AAPL", 50);
+			if (f === null || s === null) return;
+			if (f > s && !ctx.hasPosition("AAPL")) ctx.buy("AAPL", { pctCash: 0.95 });
+			else if (f < s && ctx.hasPosition("AAPL")) ctx.sell("AAPL", { all: true });
+		}
+	`)
+	spec.Universe = []string{"AAPL"}
+	spec.Start, spec.End = "2016-01-05", "2023-12-29"
+	run, err := New(spec, newTestStore(t)).Run(context.Background())
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	doc := (&Report{Title: "Silent", Run: run, Generated: time.Now()}).Markdown()
+	if !strings.Contains(doc, "No order in this run gave a reason") {
+		t.Errorf("an unattributed run needs the explanation:\n%s", doc)
+	}
+	if strings.Contains(doc, NoReasonLabel) {
+		t.Error("a table of one empty bucket is not worth printing")
 	}
 }

@@ -630,6 +630,7 @@ func printReport(plan *strategy.Plan, res *engine.Result) {
 	printRegimes(res)
 	printStress(res)
 	printSymbols(res)
+	printReasons(res)
 	printCritique(res)
 
 	if len(res.Benchmarks) > 0 {
@@ -832,6 +833,15 @@ func money(v float64) string {
 
 func pct(v float64) string { return fmt.Sprintf("%.2f%%", v*100) }
 
+// pctRatio renders a percentage that may legitimately be undefined — a share
+// of a P&L that netted to nothing.
+func pctRatio(r engine.Ratio) string {
+	if !r.Defined() {
+		return "n/a"
+	}
+	return pct(float64(r))
+}
+
 // ratio renders a metric that may legitimately be undefined — a Sortino with
 // no losing days, a profit factor with no losing trades.
 func ratio(r engine.Ratio) string {
@@ -997,6 +1007,53 @@ func printSymbols(res *engine.Result) {
 	}
 	if len(syms) > n {
 		fmt.Printf("  ... and %d more\n", len(syms)-n)
+	}
+}
+
+// printReasons attributes the P&L to the rule behind each trade.
+//
+// The symbol table above says which holding paid. This says which rule did,
+// which is the version of the question with an action attached to it.
+func printReasons(res *engine.Result) {
+	tbl := res.Reasons.Table()
+	if len(tbl.ByEntry) == 0 && len(tbl.ByExit) == 0 {
+		return
+	}
+	// A run whose orders never said why is worth a line rather than two
+	// tables of one row each. There is nothing to compare, and the reader is
+	// better told why the section is empty than left to wonder where it went.
+	if tbl.Unattributed() {
+		fmt.Printf("\nWhich rules made the money\n")
+		fmt.Printf("  No order in this run gave a reason, so there is nothing to attribute.\n")
+		fmt.Printf("  Pass one to fill this in: ctx.buy(sym, { ... }, \"why\").\n")
+		return
+	}
+	fmt.Printf("\nWhich rules made the money   (reasons grouped %s)\n", tbl.Grouping)
+	printReasonRows("Entry rule", tbl.ByEntry)
+	if len(tbl.ByEntry) > 0 && len(tbl.ByExit) > 0 {
+		fmt.Println()
+	}
+	printReasonRows("Exit rule", tbl.ByExit)
+}
+
+func printReasonRows(header string, rows []engine.ReasonStats) {
+	if len(rows) == 0 {
+		return
+	}
+	fmt.Printf("  %-28s %12s %8s %6s %7s %5s\n", header, "Net P&L", "Share", "Trades", "Win %", "Days")
+	row := func(r engine.ReasonStats) {
+		fmt.Printf("  %-28s %12s %8s %6d %7s %5.0f\n", truncate(r.Reason, 28),
+			money(r.NetPnL), pctRatio(r.Share), r.Trades, pct(r.WinRate), r.MeanDaysHeld)
+	}
+	head, dropped, tail := engine.TopAndBottom(rows, 10)
+	for _, r := range head {
+		row(r)
+	}
+	if dropped > 0 {
+		fmt.Printf("  ... %d more rules between\n", dropped)
+	}
+	for _, r := range tail {
+		row(r)
 	}
 }
 
