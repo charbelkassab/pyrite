@@ -3,6 +3,8 @@ package engine
 import (
 	"strings"
 	"testing"
+
+	"github.com/charbelkassab/pyrite/internal/market"
 )
 
 // critiqueOf runs Criticise and indexes the findings by title fragment.
@@ -299,5 +301,35 @@ func TestFlatYearsAreNotLosingYears(t *testing.T) {
 	}
 	if !found {
 		t.Error("two losing years out of three went unreported")
+	}
+}
+
+func TestCritiqueSurfacesDataDefects(t *testing.T) {
+	res := &Result{
+		Spec:    Spec{Fill: FillNextOpen, Costs: DefaultCosts()},
+		Curve:   curveOf(100, 101, 102),
+		Metrics: Metrics{TradingDays: 3, Years: 3},
+		DataQuality: []market.Finding{{
+			Severity: market.SeverityCritical,
+			Kind:     market.KindSplit,
+			Symbol:   "AAPL",
+			Title:    "a split that looks unadjusted",
+			Detail: "On 2020-08-31 the adjusted close stepped from 499.23 to 124.81, " +
+				"a -75.0% move that matches a 4:1 split.",
+		}},
+	}
+	c := Criticise(res)
+	f := hasFinding(c, "price data")
+	if f == nil {
+		t.Fatalf("a defect in the bars must reach the critique: %+v", c.Findings)
+	}
+	if f.Severity != SeverityCritical {
+		t.Errorf("a defect in the data outranks everything computed from it, got %v", f.Severity)
+	}
+	// The evidence has to travel with the claim, or it is an opinion.
+	for _, want := range []string{"AAPL", "2020-08-31", "4:1"} {
+		if !strings.Contains(f.Detail, want) {
+			t.Errorf("the finding must carry its evidence (%q): %s", want, f.Detail)
+		}
 	}
 }

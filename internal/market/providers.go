@@ -342,6 +342,15 @@ func (c *CSVProvider) Search(ctx context.Context, query string) ([]Quote, error)
 
 // ---------------------------------------------------------------------------
 
+// ReadBarsCSV parses a vendor CSV into bars, in date order and with nothing
+// removed.
+//
+// It exists for the auditor, which has to see the rows as they were written.
+// NewSeries de-duplicates as it builds, so by the time a file has become a
+// Series the one defect nobody can recover from — two contradictory prices
+// for the same session — has already been tidied silently away.
+func ReadBarsCSV(r io.Reader) ([]Bar, error) { return parseOHLCVCSV(r) }
+
 // parseOHLCVCSV reads a header row and then bars, tolerating the column names
 // and orders that different vendors use.
 //

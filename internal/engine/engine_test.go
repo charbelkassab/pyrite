@@ -677,3 +677,67 @@ func TestEqualWeightQueuesOrdersInSortedOrder(t *testing.T) {
 		}
 	}
 }
+
+// A run on data with an unadjusted split has to say so. Every statistic in
+// the result is computed from those bars, so staying silent about them and
+// then criticising the strategy would be criticising the wrong thing.
+func TestRunReportsADefectInTheDataItLoaded(t *testing.T) {
+	var bars []market.Bar
+	price := 400.0
+	split := 0
+	for i, d := 0, market.Day("2022-01-03"); d <= "2022-06-30"; d = d.Add(1) {
+		if wd := d.Time().Weekday(); wd == 0 || wd == 6 {
+			continue
+		}
+		price *= 1.001
+		p := price
+		// From the sixtieth session on, every price is halved and stays
+		// halved: an unadjusted 2:1 split.
+		if i >= 60 {
+			p /= 2
+			if split == 0 {
+				split = i
+			}
+		}
+		bars = append(bars, market.Bar{
+			Date: d, Open: p * 0.999, High: p * 1.002, Low: p * 0.998,
+			Close: p, AdjClose: p, Volume: 1e6,
+		})
+		i++
+	}
+	store := market.NewStore(&fixedProvider{series: map[string]*market.Series{
+		"SPLIT": market.NewSeries("SPLIT", bars),
+	}}, nil, mustFundamentals(t))
+
+	spec := Spec{
+		Name: "audit", Universe: []string{"SPLIT"},
+		Start: "2022-01-10", End: "2022-06-30",
+		InitialCash: 100000, AllowFractional: true, Costs: Costs{},
+		Code: `function onDay(ctx) { if (ctx.dayIndex === 0) ctx.buy("SPLIT", { pctCash: 0.9 }); }`,
+	}
+	res, err := New(spec, store).Run(context.Background())
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if len(res.DataQuality) == 0 {
+		t.Fatal("a -50% step with no adjustment went unreported by the run")
+	}
+	if res.DataQuality[0].Symbol != "SPLIT" || res.DataQuality[0].Kind != market.KindSplit {
+		t.Errorf("data defect: got %+v", res.DataQuality[0])
+	}
+	if hasFinding(res.Critique, "price data") == nil {
+		t.Errorf("the defect did not reach the critique: %+v", res.Critique.Findings)
+	}
+}
+
+// The critical scan runs on every backtest, so it must not manufacture
+// findings on ordinary data.
+func TestRunOnCleanDataReportsNoDataDefects(t *testing.T) {
+	res, err := New(baseSpec(`function onDay(ctx) {}`), newTestStore(t)).Run(context.Background())
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if len(res.DataQuality) != 0 {
+		t.Errorf("clean data produced %d defects: %+v", len(res.DataQuality), res.DataQuality)
+	}
+}

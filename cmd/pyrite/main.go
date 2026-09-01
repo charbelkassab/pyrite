@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"math"
@@ -48,6 +49,11 @@ Searching, because one backtest is one point in a space:
   pyrite ledger                     how much searching each dataset has
                                            already absorbed, across sessions
 
+Before you trust any of it, check the data it rests on:
+  pyrite audit AAPL MSFT SPY        unadjusted splits, stale prices, missing
+                                    sessions, impossible bars. Exits 2 on a
+                                    critical finding, so a pipeline can stop.
+
 Reference data:
   pyrite ingest edgar               point-in-time share counts, from SEC filings
   pyrite ingest index               point-in-time S&P 500 membership
@@ -75,6 +81,7 @@ Common flags:
   --json        print machine readable output
 
   ledger:       --dataset <key>  --reset [--yes]  --all
+  audit:        --csv-dir ./export   audit your own vendor CSVs
   run:          --cost-scan  re-run at 0, 5, 20 and 50 bps of slippage
                 --factors    regress the returns on market, size, value,
                              momentum and quality, and report what alpha is left
@@ -105,10 +112,22 @@ func main() {
 	// records which binary produced it.
 	engine.Version = version
 	if err := run(); err != nil {
+		// A command may want to fail without having failed: `audit` exits
+		// non-zero on a critical finding so a data pipeline can stop, and
+		// printing "error:" over a report it just rendered would be a lie.
+		var code exitCode
+		if errors.As(err, &code) {
+			os.Exit(int(code))
+		}
 		fmt.Fprintf(os.Stderr, "\nerror: %v\n", err)
 		os.Exit(1)
 	}
 }
+
+// exitCode is a status a command asks for, rather than a failure to report.
+type exitCode int
+
+func (c exitCode) Error() string { return fmt.Sprintf("exit status %d", int(c)) }
 
 func run() error {
 	args := os.Args[1:]
@@ -124,6 +143,8 @@ func run() error {
 		return cmdMCP(args)
 	case "run":
 		return cmdRun(args)
+	case "audit":
+		return cmdAudit(args)
 	case "doctor", "health":
 		return cmdDoctor(args)
 	case "api":
