@@ -90,6 +90,16 @@ the CLI flags may all move.
 - A reproducibility manifest on every run: data vendor, per-symbol coverage,
   code hash, cost model, seed, and which models answered.
 
+### An agent can drive it
+
+- **`pyrite mcp`.** A Model Context Protocol server on stdio, so Claude and
+  other agents can call pyrite as a tool: `strategy_api`, `list_examples`,
+  `backtest`, `sweep` and `walkforward`. Every result that came from a backtest
+  carries the critique, the trust score and the verdict alongside the numbers,
+  because an agent left alone with a backtester will otherwise try variations
+  until one looks good. JSON-RPC 2.0 implemented against the specification with
+  the standard library; no new dependency.
+
 ### Getting started
 
 - **Works with no API key.** Ollama and LM Studio are detected automatically;

@@ -16,12 +16,15 @@ internal/
   strategy             prompt -> validated JavaScript
   websearch            keyless news and web lookups
   server               JSON API, SSE, static assets
+  mcp                  Model Context Protocol over stdio, for agents
   app                  wiring: builds everything from a Config
 web/                   front end, embedded with go:embed
 ```
 
 Dependency direction is strictly one-way: `server` → `app` → `strategy` →
-`engine` → `market`. Nothing lower ever imports something higher.
+`engine` → `market`. Nothing lower ever imports something higher. `mcp` sits
+beside `server` at the top: both are protocol adapters over the same `app`, so
+a backtest cannot mean one thing over HTTP and another over stdio.
 
 Inside `engine`, the files split along what they answer:
 

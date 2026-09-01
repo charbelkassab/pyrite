@@ -20,6 +20,7 @@ import (
 	"github.com/charbelkassab/pyrite/internal/config"
 	"github.com/charbelkassab/pyrite/internal/engine"
 	"github.com/charbelkassab/pyrite/internal/market"
+	"github.com/charbelkassab/pyrite/internal/mcp"
 	"github.com/charbelkassab/pyrite/internal/server"
 	"github.com/charbelkassab/pyrite/internal/strategy"
 )
@@ -46,6 +47,9 @@ Searching, because one backtest is one point in a space:
 Reference data:
   pyrite ingest edgar               point-in-time share counts, from SEC filings
   pyrite ingest index               point-in-time S&P 500 membership
+
+Driving it from an agent:
+  pyrite mcp                        serve the Model Context Protocol on stdio
 
 Everything else:
   pyrite doctor                     check data, model providers and caches
@@ -106,6 +110,8 @@ func run() error {
 	switch cmd {
 	case "serve":
 		return cmdServe(args)
+	case "mcp":
+		return cmdMCP(args)
 	case "run":
 		return cmdRun(args)
 	case "doctor", "health":
@@ -203,6 +209,35 @@ func cmdServe(args []string) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	return srv.ListenAndServe(ctx, a.Cfg.Addr)
+}
+
+// cmdMCP serves the Model Context Protocol on stdio, so an agent can drive
+// pyrite as a tool.
+//
+// Nothing in this command may write to stdout: it carries protocol frames and
+// a single stray line desynchronises the stream, which the client reports as a
+// parse error with no indication of where it came from. The startup line goes
+// to stderr, which is where Claude Desktop and Claude Code put a server's log.
+func cmdMCP(args []string) error {
+	fs := flag.NewFlagSet("mcp", flag.ExitOnError)
+	offline := fs.Bool("offline", false, "use synthetic data and disable network access")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	a, err := newApp(fs, offline)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(os.Stderr, "pyrite %s serving MCP on stdio: data %s, cache %s\n",
+		version, a.Store.ProviderName(), a.Cfg.DataDir)
+	if a.Cfg.OfflineMode {
+		fmt.Fprintf(os.Stderr, "offline: prices are synthetic, not the market\n")
+	}
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	return mcp.New(a, version).Serve(ctx, os.Stdin, os.Stdout)
 }
 
 func cmdRun(args []string) error {
