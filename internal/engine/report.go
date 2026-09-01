@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode"
 )
 
 // Report is everything known about one strategy, assembled into a document.
@@ -27,6 +28,9 @@ type Report struct {
 	WalkForward *WalkForwardResult `json:"-"`
 	Costs       *CostScan          `json:"-"`
 	Bootstrap   BootstrapBands     `json:"bootstrap"`
+	// Factors is the decomposition against known risk premia. It is small
+	// enough to travel in the JSON, unlike the four above.
+	Factors *FactorExposure `json:"factors,omitempty"`
 
 	// Narrative is a model's prose summary. Everything else in the document
 	// stands without it.
@@ -61,6 +65,7 @@ func (r *Report) Markdown() string {
 	r.writeRobustness(&b)
 	r.writeAttribution(&b)
 	r.writeCosts(&b)
+	r.writeFactors(&b)
 	r.writeBootstrap(&b)
 	r.writeObjections(&b)
 	r.writeMechanics(&b)
@@ -91,6 +96,9 @@ func (r *Report) writeVerdict(b *strings.Builder) {
 	}
 	if r.Costs != nil && r.Costs.Verdict != "" {
 		fmt.Fprintf(b, "On costs: %s.\n\n", r.Costs.Verdict)
+	}
+	if r.Factors != nil && r.Factors.Verdict != "" {
+		fmt.Fprintf(b, "Against known factors: %s.\n\n", r.Factors.Verdict)
 	}
 }
 
@@ -269,6 +277,59 @@ func (r *Report) writeCosts(b *strings.Builder) {
 	b.WriteString("\n")
 }
 
+// writeFactors reports what the strategy earned that its exposures do not
+// account for.
+//
+// It sits after the cost section because it asks the same shape of question:
+// not how large the return was, but how much of it belongs to the strategy
+// rather than to something already available for the price of an index fund.
+func (r *Report) writeFactors(b *strings.Builder) {
+	f := r.Factors
+	if f == nil || len(f.Factors) == 0 {
+		return
+	}
+	b.WriteString("## Is any of this alpha?\n\n")
+	b.WriteString("The strategy's excess returns, regressed on tradable proxies for the " +
+		"factors that already explain most cross-sectional equity returns. A loading " +
+		"says the strategy is taking a risk somebody has already named and priced. " +
+		"The intercept is what is left over, and its t-statistic is whether that " +
+		"remainder can be told apart from zero.\n\n")
+
+	b.WriteString("| Factor | Proxy | Beta | Std error | t-stat |\n")
+	b.WriteString("| --- | --- | ---: | ---: | ---: |\n")
+	for _, l := range f.Factors {
+		fmt.Fprintf(b, "| %s | %s | %s | %s | %s |\n",
+			l.Name, l.Proxy, ratioText(l.Beta), ratioText(l.StdErr), ratioText(l.TStat))
+	}
+	fmt.Fprintf(b, "| **Alpha, annualised** | | **%s** | %s | **%s** |\n\n",
+		pctOrNAText(f.Alpha), pctOrNAText(f.AlphaStdErr), ratioText(f.AlphaTStat))
+
+	fmt.Fprintf(b, "R² %s (adjusted %s) over %d observations, with Newey-West standard "+
+		"errors at a lag of %d bars to allow for the autocorrelation in daily strategy "+
+		"returns.", ratioText(f.RSquared), ratioText(f.AdjRSquared),
+		f.Observations, f.NeweyWestLag)
+	if f.AvgExposure.Defined() {
+		// The market beta is not readable without this: a beta well under
+		// the average exposure means the strategy was flat during the
+		// volatile stretches, not that it found something uncorrelated.
+		fmt.Fprintf(b, " Average gross exposure over the same bars was %s, which is what "+
+			"the market beta should be read against.", ratioText(f.AvgExposure))
+	}
+	b.WriteString("\n\n")
+
+	if len(f.Dropped) > 0 {
+		b.WriteString("Not measured over this period:\n\n")
+		for _, d := range f.Dropped {
+			fmt.Fprintf(b, "- %s (%s): %s.\n", d.Name, d.Proxy, d.Reason)
+		}
+		b.WriteString("\n")
+	}
+	if f.Verdict != "" {
+		fmt.Fprintf(b, "**%s.**\n\n", upperFirst(f.Verdict))
+	}
+	fmt.Fprintf(b, "%s\n\n", f.ProxyNote)
+}
+
 func (r *Report) writeBootstrap(b *strings.Builder) {
 	bs := r.Bootstrap
 	if bs.Trials == 0 {
@@ -354,6 +415,26 @@ func (r *Report) writeCode(b *strings.Builder) {
 
 func pctText(v float64) string {
 	return fmt.Sprintf("%.2f%%", v*100)
+}
+
+// upperFirst capitalises a verdict that has to open a paragraph.
+//
+// The verdicts are written to follow a lead-in — "On costs: ", "Against known
+// factors: " — so they start lowercase everywhere else on purpose.
+func upperFirst(s string) string {
+	if s == "" {
+		return s
+	}
+	r := []rune(s)
+	return string(unicode.ToUpper(r[0])) + string(r[1:])
+}
+
+// pctOrNAText renders a percentage that may legitimately be undefined.
+func pctOrNAText(r Ratio) string {
+	if !r.Defined() {
+		return "n/a"
+	}
+	return pctText(float64(r))
 }
 
 func ratioText(r Ratio) string {

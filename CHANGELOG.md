@@ -35,6 +35,14 @@ the CLI flags may all move.
   Markdown document, verdict first.
 - **Cost sensitivity.** `--cost-scan` re-runs at 0, 5, 20 and 50 bps and
   interpolates the break-even.
+- **Factor exposure.** `--factors` regresses the strategy's excess returns on
+  market, size, value, momentum and quality, and reports the residual alpha
+  with its t-statistic. Newey-West standard errors, because daily strategy
+  returns are autocorrelated and the naive t-statistic is too generous. The
+  factors are ETF spreads (SPY, IWM, IWD/IWF, MTUM, USMV) rather than the
+  academic series, which is stated in the output rather than buried here. A
+  proxy with no data over the period is dropped and named. `pyrite report`
+  carries the same analysis as its own section.
 
 ### Bar sizes
 

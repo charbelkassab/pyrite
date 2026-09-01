@@ -98,6 +98,10 @@ func narrateUserPrompt(rep *engine.Report) string {
 	if c := rep.Costs; c != nil && c.Verdict != "" {
 		fmt.Fprintf(&b, "Cost sensitivity: %s\n\n", c.Verdict)
 	}
+	if f := rep.Factors; f != nil && f.Verdict != "" {
+		fmt.Fprintf(&b, "Factor decomposition against ETF proxies (not the academic "+
+			"series, so treat the loadings as indicative): %s\n\n", f.Verdict)
+	}
 	if bs := rep.Bootstrap; bs.Trials > 0 {
 		fmt.Fprintf(&b, "Block bootstrap over %d resamples: fifth-percentile total return "+
 			"%.2f%%, median %.2f%%, fifth-percentile max drawdown %.2f%%, "+

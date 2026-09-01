@@ -71,6 +71,8 @@ Common flags:
   --json        print machine readable output
 
   run:          --cost-scan  re-run at 0, 5, 20 and 50 bps of slippage
+                --factors    regress the returns on market, size, value,
+                             momentum and quality, and report what alpha is left
   sweep:        --param fast=10,20,50   --objective sharpe   --csv out.csv
   walkforward:  --train 504  --test 126  --embargo 200  --anchored
   improve:      --budget 6   --holdout 0.3   --goal "..."
@@ -255,6 +257,8 @@ func cmdRun(args []string) error {
 	example := fs.String("example", "",
 		"run a bundled example; `pyrite examples` lists them")
 	costScan := fs.Bool("cost-scan", false, "also re-run at 0, 5, 20 and 50 bps of slippage")
+	factors := fs.Bool("factors", false,
+		"also decompose the returns against ETF factor proxies and report the residual alpha")
 	impact := fs.Float64("impact", 0,
 		"market impact coefficient; 1 is the usual estimate, 0 disables the model")
 	interval := fs.String("interval", "1d",
@@ -425,7 +429,58 @@ func cmdRun(args []string) error {
 		}
 		printCostScan(scan)
 	}
+	// And the factor decomposition asks the third question: how much of it
+	// was the strategy rather than an exposure that already has a name.
+	if *factors {
+		fx, err := engine.AnalyseFactors(ctx, res.Curve, a.Store,
+			spec.Interval, engine.ScaleFor(spec.Interval, spec.RiskFreeRate), nil)
+		if err != nil {
+			return err
+		}
+		printFactors(fx)
+	}
 	return nil
+}
+
+// printFactors reports what is left of the strategy once known risk premia
+// are taken out of it.
+func printFactors(f *engine.FactorExposure) {
+	fmt.Printf("\nWhat is left after known factors?\n")
+	fmt.Printf("  %-15s %-12s %10s %10s %10s\n", "Factor", "Proxy", "Beta", "Std err", "t-stat")
+	for _, l := range f.Factors {
+		fmt.Printf("  %-15s %-12s %10s %10s %10s\n",
+			l.Name, l.Proxy, ratio(l.Beta), ratio(l.StdErr), ratio(l.TStat))
+	}
+	fmt.Printf("  %-28s %10s %10s %10s\n", "Alpha, annualised",
+		pctOrNA(f.Alpha), pctOrNA(f.AlphaStdErr), ratio(f.AlphaTStat))
+
+	fmt.Printf("\n  %-30s %14s\n", "R² (adjusted)",
+		fmt.Sprintf("%s (%s)", ratio(f.RSquared), ratio(f.AdjRSquared)))
+	fmt.Printf("  %-30s %14d\n", "Observations", f.Observations)
+	fmt.Printf("  %-30s %14d\n", "Newey-West lag", f.NeweyWestLag)
+	if f.AvgExposure.Defined() {
+		// Printed beside the market beta because the two only mean anything
+		// together: a low beta from a fully invested book and a low beta
+		// from a strategy that was flat half the time are different facts.
+		fmt.Printf("  %-30s %14s\n", "Average gross exposure", ratio(f.AvgExposure))
+	}
+
+	for _, d := range f.Dropped {
+		fmt.Printf("  %-30s %s\n", "Dropped: "+d.Name,
+			wrapIndent(d.Reason, 44, strings.Repeat(" ", 33)))
+	}
+	if f.Verdict != "" {
+		fmt.Printf("\n  %s\n", wrapIndent(f.Verdict, 74, "  "))
+	}
+	fmt.Printf("\n  %s\n", wrapIndent(f.ProxyNote, 74, "  "))
+}
+
+// pctOrNA renders a percentage that may legitimately be undefined.
+func pctOrNA(r engine.Ratio) string {
+	if !r.Defined() {
+		return "n/a"
+	}
+	return pct(float64(r))
 }
 
 // printCostScan reports the same strategy at several friction levels.

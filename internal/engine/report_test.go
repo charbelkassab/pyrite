@@ -34,11 +34,17 @@ func reportFor(t *testing.T) *Report {
 	if err != nil {
 		t.Fatalf("cost scan: %v", err)
 	}
+	factors, err := AnalyseFactors(context.Background(), run.Curve, store,
+		spec.Interval, ScaleFor(spec.Interval, spec.RiskFreeRate), nil)
+	if err != nil {
+		t.Fatalf("factors: %v", err)
+	}
 
 	return &Report{
 		Title: "Test strategy", Prompt: "a moving average cross",
 		Generated: time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC),
 		Run:       run, Sweep: sw, WalkForward: wf, Costs: costs,
+		Factors:     factors,
 		Bootstrap:   Bootstrap(run.Curve, 500, 21, 42),
 		Assumptions: []string{"trades at the next open"},
 		Limitations: []string{"no intraday stops"},
@@ -58,6 +64,10 @@ func TestReportContainsEverySection(t *testing.T) {
 		"Expected best from luck alone",
 		"## Where the return came from",
 		"## How much survives friction",
+		"## Is any of this alpha?",
+		"Alpha, annualised",
+		"Newey-West standard",
+		"ETF spreads, not the Fama-French",
 		"## One path is not the distribution",
 		"## Objections",
 		"## How this was produced",
@@ -109,7 +119,8 @@ func TestReportRendersWithoutOptionalSections(t *testing.T) {
 		t.Fatalf("the minimal report is not coherent:\n%s", doc)
 	}
 	for _, absent := range []string{"## Out of sample", "## How much survives friction",
-		"## One path is not the distribution", "How much of this is the search?"} {
+		"## Is any of this alpha?", "## One path is not the distribution",
+		"How much of this is the search?"} {
 		if strings.Contains(doc, absent) {
 			t.Errorf("%q should be omitted when its analysis was not run", absent)
 		}
