@@ -333,3 +333,97 @@ func TestCritiqueSurfacesDataDefects(t *testing.T) {
 		}
 	}
 }
+
+// reasonTrades builds n closed round trips that all say the same thing and
+// all made the same money, which is enough to exercise the rule tables.
+func reasonTrades(reason string, n int, pnl float64) []Trade {
+	out := make([]Trade, n)
+	for i := range out {
+		out[i] = Trade{
+			Symbol: "AAA", Direction: DirLong,
+			EntryDate: "2022-01-03", ExitDate: "2022-01-10",
+			EntryPrice: 100, ExitPrice: 100 + pnl, Shares: 1,
+			NetPnL: pnl, EntryReason: reason, ExitReason: "flattened",
+		}
+	}
+	return out
+}
+
+func resultForReasons(trades []Trade) *Result {
+	return &Result{
+		Spec:       Spec{Fill: FillNextOpen, Costs: DefaultCosts()},
+		Curve:      curveOf(100, 101, 102),
+		Metrics:    Metrics{TradingDays: 500, Years: 3},
+		Trades:     trades,
+		TradeStats: ComputeTradeStats(trades),
+		Reasons:    ComputeReasonAttribution(trades),
+	}
+}
+
+func TestCritiqueFlagsADominantLosingEntryRule(t *testing.T) {
+	trades := append(reasonTrades("buy the dip", 25, -20), reasonTrades("breakout", 8, 100)...)
+	c := Criticise(resultForReasons(trades))
+
+	f := hasFinding(c, "most of the trading")
+	if f == nil {
+		t.Fatalf("a rule with 25 of 33 trades and a loss must be named: %+v", c.Findings)
+	}
+	if f.Severity != SeverityWarning {
+		t.Errorf("severity: got %v, want warning", f.Severity)
+	}
+	// The claim is worthless without the count, the share and the money.
+	for _, want := range []string{"buy the dip", "25", "33", "76%", "$500"} {
+		if !strings.Contains(f.Detail, want) {
+			t.Errorf("the finding must carry its evidence (%q): %s", want, f.Detail)
+		}
+	}
+}
+
+func TestCritiqueFlagsALosingRuleThatIsNotDominant(t *testing.T) {
+	trades := append(reasonTrades("buy the dip", 12, -25), reasonTrades("breakout", 30, 100)...)
+	c := Criticise(resultForReasons(trades))
+
+	f := hasFinding(c, "dead weight")
+	if f == nil {
+		t.Fatalf("a rule that loses over 12 round trips must be named: %+v", c.Findings)
+	}
+	for _, want := range []string{"buy the dip", "$300", "12", "$3.0k"} {
+		if !strings.Contains(f.Detail, want) {
+			t.Errorf("the finding must carry its evidence (%q): %s", want, f.Detail)
+		}
+	}
+	if hasFinding(c, "most of the trading") != nil {
+		t.Errorf("12 of 42 trades is not most of the trading: %+v", c.Findings)
+	}
+
+	// When what is left also lost money, the sentence has to say so rather
+	// than report a negative amount as something the strategy made.
+	losing := append(reasonTrades("buy the dip", 12, -25), reasonTrades("breakout", 30, -5)...)
+	f = hasFinding(Criticise(resultForReasons(losing)), "dead weight")
+	if f == nil {
+		t.Fatalf("the finding should still fire when everything loses")
+	}
+	if !strings.Contains(f.Detail, "lost $150 between them") {
+		t.Errorf("a loss must be worded as one: %s", f.Detail)
+	}
+}
+
+func TestCritiqueLeavesProfitableRulesAlone(t *testing.T) {
+	trades := append(reasonTrades("buy the dip", 25, 20), reasonTrades("breakout", 8, 100)...)
+	c := Criticise(resultForReasons(trades))
+	if f := hasFinding(c, "dead weight"); f != nil {
+		t.Errorf("a rule that makes money is not dead weight: %s", f.Detail)
+	}
+	if f := hasFinding(c, "most of the trading"); f != nil {
+		t.Errorf("a dominant rule that works is not a finding: %s", f.Detail)
+	}
+}
+
+func TestCritiqueIgnoresARuleWithTooFewTradesToJudge(t *testing.T) {
+	// Four losing round trips is an anecdote. The threshold has to hold or
+	// the section fills with noise on every run.
+	trades := append(reasonTrades("buy the dip", 4, -50), reasonTrades("breakout", 30, 100)...)
+	if f := hasFinding(Criticise(resultForReasons(trades)), "dead weight"); f != nil {
+		t.Errorf("four trades is not enough to condemn a rule: %s", f.Detail)
+	}
+}

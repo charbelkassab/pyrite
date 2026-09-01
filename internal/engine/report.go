@@ -64,6 +64,7 @@ func (r *Report) Markdown() string {
 	r.writeOutOfSample(&b)
 	r.writeRobustness(&b)
 	r.writeAttribution(&b)
+	r.writeReasons(&b)
 	r.writeCosts(&b)
 	r.writeFactors(&b)
 	r.writeBootstrap(&b)
@@ -268,6 +269,62 @@ func (r *Report) writeAttribution(b *strings.Builder) {
 		}
 		b.WriteString("\n")
 	}
+}
+
+// writeReasons attributes the realised P&L to the rules that produced it.
+//
+// It follows the symbol table because it is the same decomposition asked of
+// something the author controls. A holding cannot be removed from a strategy;
+// the condition that bought it can.
+func (r *Report) writeReasons(b *strings.Builder) {
+	if r.Run == nil {
+		return
+	}
+	tbl := r.Run.Reasons.Table()
+	if len(tbl.ByEntry) == 0 && len(tbl.ByExit) == 0 {
+		return
+	}
+	b.WriteString("## Which rules made the money\n\n")
+	// A run whose orders never said why gets the sentence rather than two
+	// tables of one row each, because saying the section is empty and why is
+	// more use than a table with nothing to compare in it.
+	if tbl.Unattributed() {
+		b.WriteString("No order in this run gave a reason, so there is nothing to attribute. " +
+			"Pass one to fill this in: `ctx.buy(sym, { ... }, \"why\")`.\n\n")
+		return
+	}
+	fmt.Fprintf(b, "Reasons are grouped %s.\n\n", tbl.Grouping)
+	writeReasonTable(b, "Entry rule", tbl.ByEntry)
+	writeReasonTable(b, "Exit rule", tbl.ByExit)
+	fmt.Fprintf(b, "Every closed round trip appears once in each table, so both sum to %s.\n\n",
+		money(SumNetPnL(tbl.ByEntry)))
+}
+
+func writeReasonTable(b *strings.Builder, header string, rows []ReasonStats) {
+	if len(rows) == 0 {
+		return
+	}
+	fmt.Fprintf(b, "| %s | Net P&L | Share | Trades | Win rate | Mean days | Mean MAE | Mean MFE |\n", header)
+	b.WriteString("| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |\n")
+	write := func(s ReasonStats) {
+		// A reason is free text written by the strategy author, and one
+		// pipe in it would silently break the rest of the table.
+		label := strings.ReplaceAll(s.Reason, "|", "\\|")
+		fmt.Fprintf(b, "| %s | %s | %s | %d | %s | %.0f | %s | %s |\n", label,
+			money(s.NetPnL), pctOrNAText(s.Share), s.Trades, pctText(s.WinRate),
+			s.MeanDaysHeld, pctText(s.MeanMAEPct), pctText(s.MeanMFEPct))
+	}
+	head, dropped, tail := TopAndBottom(rows, 12)
+	for _, s := range head {
+		write(s)
+	}
+	if dropped > 0 {
+		fmt.Fprintf(b, "| *... %d more rules between* | | | | | | | |\n", dropped)
+	}
+	for _, s := range tail {
+		write(s)
+	}
+	b.WriteString("\n")
 }
 
 func (r *Report) writeCosts(b *strings.Builder) {
