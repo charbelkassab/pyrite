@@ -552,9 +552,30 @@ func printRobustness(r engine.Robustness, objective string) {
 	if r.DeflatedSharpe.Defined() {
 		fmt.Printf("  %-30s %14s\n", "Deflated Sharpe", pct(float64(r.DeflatedSharpe)))
 	}
+	if rc := r.RealityCheck; rc.RealityCheckP.Defined() {
+		fmt.Printf("  %-30s %14s   (%d resamples)\n", "Reality check p-value",
+			engine.FormatPValue(float64(rc.RealityCheckP), rc.Bootstraps), rc.Bootstraps)
+		fmt.Printf("  %-30s %14s\n", "Hansen SPA p-value",
+			engine.FormatPValue(float64(rc.SPAP), rc.Bootstraps))
+	}
+	printNullStrategy(r.NullStrategy)
 	if r.Verdict != "" {
 		fmt.Printf("\n  %s\n", wrapIndent(r.Verdict, 74, "  "))
 	}
+}
+
+// printNullStrategy reports the winner against random trading with the same
+// habits. It shares printRobustness's column layout because it belongs to the
+// same question and a second layout would read as a second subject.
+func printNullStrategy(ns engine.NullStrategy) {
+	if !ns.Percentile.Defined() {
+		return
+	}
+	fmt.Printf("  %-30s %14s   (%d holds, %.0f%% exposure)\n", "Beats random entries",
+		pct(float64(ns.Percentile)), ns.Episodes, ns.AvgExposure*100)
+	fmt.Printf("  %-30s %14s\n", "  strategy, timing only", ratio(ns.Score))
+	fmt.Printf("  %-30s %14s\n", "  random, median", ratio(ns.NullMedian))
+	fmt.Printf("  %-30s %14s\n", "  random, 95th percentile", ratio(ns.NullP95))
 }
 
 // printWalkForward renders the fold-by-fold out-of-sample report.
