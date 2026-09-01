@@ -15,7 +15,7 @@ curve *and* the specific reasons not to believe it.
 [**Try it**](#try-it-in-30-seconds) ·
 [Why](#why-this-exists) ·
 [Install](#install) ·
-[Tour](#a-tour-in-five-commands) ·
+[Tour](#a-tour-in-six-commands) ·
 [What it measures](#what-it-measures) ·
 [Honest data](#the-data-is-the-hard-part) ·
 [Python](#from-python) ·
@@ -121,6 +121,11 @@ without being asked.
 | **Market impact** | what your size costs, under the square-root law |
 | **Point-in-time membership** | what the index actually held that day, failures included |
 | **Point-in-time news** | what had actually been published by then, not what the web says now |
+| **Factor exposure** | whether the alpha is alpha, or momentum and leverage wearing a hat |
+| **Capacity** | the size at which your own trading eats the edge |
+| **Signal decay** | whether the edge is spent three days in, while you hold for forty |
+| **Rule attribution** | which of your rules makes the money, and which is dead weight |
+| **A sealed forward log** | what the strategy said before the price existed — the one test nobody can iterate against |
 
 It is a single Go binary. No accounts, no signup, no telemetry, no cloud
 service, no database. It runs on your laptop and writes to `~/.pyrite`.
@@ -178,9 +183,9 @@ is none.
 
 ---
 
-## A tour in five commands
+## A tour in six commands
 
-The same strategy, looked at five ways. Each one is harder to fool than the
+The same strategy, looked at six ways. Each one is harder to fool than the
 last, and the story they tell together is the point of the tool.
 
 <br>
@@ -415,7 +420,43 @@ group. In `pyrite report` it sits behind `--cpcv` for that reason.
 
 <br>
 
-### 5. `improve` — "make this better", without the usual trap
+### 5. `--factors` — is the alpha actually alpha?
+
+The four commands above ask whether a result survives its own search. This one
+asks a different and often ruder question: whether there was anything there to
+begin with, or whether the strategy is a known risk premium with extra steps.
+
+```bash
+pyrite run --example momentum-rotation --from 2018-01-02 --to 2023-12-29 --factors
+```
+
+```
+What is left after known factors?
+  Factor          Proxy              Beta    Std err     t-stat
+  Market          SPY - rf           1.03       0.03      31.46
+  Size            IWM - SPY          0.06       0.06       1.13
+  Value           IWD - IWF         -0.62       0.07      -8.54
+  Momentum        MTUM - SPY         0.58       0.09       6.35
+  Low volatility  USMV - SPY        -0.84       0.11      -7.74
+  Alpha, annualised                15.06%      7.98%       1.89
+
+  after market, value, low volatility and momentum exposure, annual alpha is
+  15.1% with a t-statistic of 1.9 — indistinguishable from zero
+```
+
+That strategy returns **443.7%** over six years at a 0.96 Sharpe. After the
+decomposition it is a market beta of 1.0 and a momentum loading of 0.58 at
+t=6.3, and the alpha that remains cannot be told apart from zero. You could
+have bought MTUM.
+
+The factors are ETF spreads rather than the academic series, which the output
+says wherever it appears — a new data vendor for one statistic is a poor trade
+in a tool that ships as one binary, and overstating their precision would be
+the exact dishonesty this project exists to fight.
+
+<br>
+
+### 6. `improve` — "make this better", without the usual trap
 
 ```bash
 pyrite improve "a golden cross on SPY" --budget 8
@@ -490,6 +531,46 @@ the drawdown beneath it and the calendar years drawn as inline SVG, light and
 dark, no scripts and no network requests of any kind. It opens from a `file://`
 URL, prints to a sensible PDF, and is the version to send somebody. The two
 flags work together or on their own.
+
+---
+
+## Three things that make a result checkable
+
+Every statistic above constrains how a *past* sample is used. A determined
+person defeats all of them the same way — by trying again until something
+looks good. These three exist because of that.
+
+**`pyrite ledger` counts what you have already tried.** Deflated Sharpe and the
+probability of overfitting correct for the trials in one search. Nobody counts
+the forty sweeps they ran last month over the same symbols, so every one of
+those corrections is quietly optimistic exactly when it matters. The ledger
+remembers across sessions:
+
+```
+you have now tried 164 configurations against this dataset across 5
+sessions; a Sharpe below 0.60 is what the best of 164 tries reaches by
+luck alone
+```
+
+The key is the *dataset* — symbols, period, bar size — deliberately not the
+strategy, because folding that in would reset the count every time you changed
+your mind, and that count is the one that must not reset.
+
+**`pyrite forward` writes down what the strategy says before the price
+exists.** It is the only unfakeable out-of-sample test here, so the log is
+sealed in a hash chain: an edited record is reported at itself, a deleted one
+at the record that should have followed it, and scoring refuses outright on a
+broken chain. Records backfilled with `--as-of` are scored separately under
+the heading *"backfilled, and therefore not evidence"*. There is no way to
+delete a record, because a log you can prune proves nothing.
+
+**`pyrite bundle` carries the data, not just a note about it.** This one is
+necessary for a reason worth stating plainly: two exports of the same command
+minutes apart carried byte-identical raw prices and **different adjusted
+closes on 1907 of 2337 rows**. The vendor recomputes its adjustment chain
+continuously, so "run the same command" does not reproduce a result even for
+the same person an hour later. A bundle re-runs with no network at all and
+either matches exactly or names the session the two runs parted on.
 
 ---
 
@@ -906,6 +987,16 @@ pyrite improve "<strategy>"       guided search against a blind holdout
 pyrite ledger                     how much searching each dataset has already
                                   absorbed, across every past session
 
+pyrite audit SYM...               check the price data itself: unadjusted
+                                  splits, stale prints, gaps, impossible bars
+pyrite bundle export --out F      the strategy, the spec and every bar it read,
+                                  in one file somebody else can re-run
+pyrite bundle run F               reproduce it exactly, with no network
+pyrite forward record             write down what it wants to hold next
+                                  session, sealed in a hash chain
+pyrite forward score              measure the records whose sessions happened
+pyrite forward verify             check that nothing recorded was altered
+
 pyrite ingest edgar               point-in-time share counts, from SEC filings
 pyrite ingest index               point-in-time S&P 500 membership
 
@@ -928,7 +1019,8 @@ fast=10,20,50 --objective sharpe --csv out.csv` · `cpcv --groups 6
 --test-groups 2` · `walkforward --train 504 --test 126 --embargo 200
 --anchored` · `improve --budget 6 --holdout 0.3 --goal "..."` · `report --out
 report.md --html report.html` · `scenarios --list` · `ledger --dataset <key>
---reset --yes`.
+--reset --yes` · `run --factors --null-strategy` · `run --borrow-file b.csv
+--allow-short` · `audit --csv-dir ./export`.
 
 A key is needed only to compile plain language. Every search above runs on
 `--code-file` or `--example` with none.
