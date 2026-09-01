@@ -51,6 +51,12 @@ the CLI flags may all move.
   so when the history has outgrown them. `PYRITE_NO_LEDGER=1` turns it off.
 - **Research reports.** `pyrite report` runs the whole battery and writes one
   Markdown document, verdict first.
+- **Shareable HTML reports.** `pyrite report --html out.html` renders the same
+  document as one self-contained page: the equity curve with the benchmark
+  overlaid, the drawdown beneath it on the same x axis, and the calendar years
+  as bars, all drawn as inline SVG in Go. No scripts, no fonts, no charting
+  library, no network requests at all, light and dark, and a print stylesheet
+  so it saves to PDF. `--out` and `--html` work together or separately.
 - **Cost sensitivity.** `--cost-scan` re-runs at 0, 5, 20 and 50 bps and
   interpolates the break-even.
 - **Factor exposure.** `--factors` regresses the strategy's excess returns on
