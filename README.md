@@ -689,6 +689,31 @@ only; pandas is optional and upgrades tables to DataFrames when present. See
 
 ---
 
+## From an agent
+
+```bash
+claude mcp add pyrite -- /usr/local/bin/pyrite mcp
+```
+
+`pyrite mcp` serves the [Model Context Protocol](https://modelcontextprotocol.io)
+over stdio, so Claude can write a strategy, run it, read what is wrong with it
+and revise. Five tools: `strategy_api`, `list_examples`, `backtest`, `sweep`,
+`walkforward`.
+
+The direction is the point. Everywhere else here a model is a component pyrite
+calls; over MCP pyrite is the tool and the model is the caller, and an agent
+left alone with a backtester will try variations until one looks good — the
+exact failure the rest of this project exists to measure. So every result that
+came from a backtest carries its critique, its trust score and its verdict in
+the same payload as the numbers. There is no call that returns one without the
+other.
+
+For Claude Desktop, and the full tool reference, see [docs/mcp.md](docs/mcp.md).
+No API key is needed: a key compiles English into a strategy, and an agent
+writes the JavaScript itself.
+
+---
+
 ## What it cannot tell you
 
 A backtesting tool that oversells itself is worse than useless, so here is the
@@ -742,6 +767,8 @@ pyrite improve "<strategy>"       guided search against a blind holdout
 
 pyrite ingest edgar               point-in-time share counts, from SEC filings
 pyrite ingest index               point-in-time S&P 500 membership
+
+pyrite mcp                        serve the Model Context Protocol on stdio
 
 pyrite doctor                     what works right now, and how to fix the rest
 pyrite api                        print the strategy API reference
