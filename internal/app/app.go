@@ -280,8 +280,13 @@ func BuildSpec(plan *strategy.Plan, prompt string, opts RunOptions) engine.Spec 
 	return spec
 }
 
-// Backtest runs a spec, wiring in the AI and search callbacks.
-func (a *App) Backtest(ctx context.Context, spec engine.Spec, opts RunOptions) (*engine.Result, error) {
+// NewEngine builds a configured engine without running it.
+//
+// Backtest is the usual way in. This exists for callers that need the engine
+// itself once the run is over rather than only its result — exporting a
+// reproducibility bundle needs the bars the run consumed, and those live on
+// the engine.
+func (a *App) NewEngine(spec engine.Spec, opts RunOptions) *engine.Engine {
 	opts.ApplyDefaults()
 
 	eng := engine.New(spec, a.Store)
@@ -296,7 +301,12 @@ func (a *App) Backtest(ctx context.Context, spec engine.Spec, opts RunOptions) (
 	if a.Search != nil && a.Search.Enabled {
 		eng.Search = a.Search.Search
 	}
-	return eng.Run(ctx)
+	return eng
+}
+
+// Backtest runs a spec, wiring in the AI and search callbacks.
+func (a *App) Backtest(ctx context.Context, spec engine.Spec, opts RunOptions) (*engine.Result, error) {
+	return a.NewEngine(spec, opts).Run(ctx)
 }
 
 // makeAIFunc builds the ctx.ai() backend.

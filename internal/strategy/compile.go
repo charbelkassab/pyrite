@@ -169,22 +169,23 @@ func (c *Compiler) applyDefaults(p *Plan, req Request) {
 	}
 }
 
-// validate compiles the strategy and runs it over a short slice of real data.
+// Check reports everything wrong with a strategy body that can be found
+// without running it: it must parse, it must define onDay, and it must not
+// reach for a runtime the sandbox does not have.
 //
-// A syntax check alone is not enough: most failures are runtime ones — calling
-// a function that does not exist, or reading a property of a null indicator —
-// and those only surface when the code actually executes.
-func (c *Compiler) validate(ctx context.Context, p *Plan, req Request) []string {
-	var problems []string
-
-	code := strings.TrimSpace(p.Code)
+// Exported because the compiler is no longer the only way code arrives. A
+// reproducibility bundle carries JavaScript written by somebody else, and it
+// gets the same reading before anything executes it.
+func Check(code string) []string {
+	code = strings.TrimSpace(code)
 	if code == "" {
 		return []string{"the strategy code was empty"}
 	}
-
 	if _, err := goja.Compile("strategy.js", code, true); err != nil {
 		return []string{"the code has a JavaScript syntax error: " + err.Error()}
 	}
+
+	var problems []string
 	if !strings.Contains(code, "function onDay") && !strings.Contains(code, "onDay =") {
 		problems = append(problems, "the code does not define onDay(ctx)")
 	}
@@ -195,7 +196,19 @@ func (c *Compiler) validate(ctx context.Context, p *Plan, req Request) []string 
 				"the code uses %q, which is not available in the sandbox", strings.TrimSuffix(banned, "(")))
 		}
 	}
-	if len(problems) > 0 {
+	return problems
+}
+
+// validate compiles the strategy and runs it over a short slice of real data.
+//
+// A syntax check alone is not enough: most failures are runtime ones — calling
+// a function that does not exist, or reading a property of a null indicator —
+// and those only surface when the code actually executes.
+func (c *Compiler) validate(ctx context.Context, p *Plan, req Request) []string {
+	var problems []string
+
+	code := strings.TrimSpace(p.Code)
+	if problems = Check(code); len(problems) > 0 {
 		return problems
 	}
 

@@ -219,3 +219,61 @@ func (f *Fundamentals) RankByMarketCap(d Day, series map[string]*Series) []Ranki
 	}
 	return out
 }
+
+// ParseFundamentals reads a share-count table from a reader.
+//
+// LoadFundamentals only reads from disk, which a reproducibility bundle
+// cannot use: the rows travel inside the archive and have to be served
+// without being written anywhere first.
+func ParseFundamentals(r io.Reader) (*Fundamentals, error) {
+	f := &Fundamentals{
+		shares: map[string][]sharesRow{},
+		names:  map[string]string{},
+		source: "bundle",
+	}
+	if err := f.parse(r); err != nil {
+		return nil, err
+	}
+	return f, nil
+}
+
+// WriteSharesCSV renders the rows for the given symbols in the format parse
+// reads back.
+//
+// A symbol list rather than the whole table, because the bundled table is a
+// megabyte of companies a given run never ranked, and a bundle is meant to be
+// small enough to hand to somebody.
+func WriteSharesCSV(w io.Writer, f *Fundamentals, symbols []string) error {
+	fmt.Fprintf(w, "# pyrite — point-in-time shares outstanding, as the bundled run saw them.\n")
+	fmt.Fprintf(w, "# Only the symbols that run could rank are here; the full table is larger.\n")
+	fmt.Fprintf(w, "# symbol,from,shares,name\n")
+
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+
+	cw := csv.NewWriter(w)
+	for _, sym := range DedupeSymbols(symbols) {
+		for _, row := range f.shares[sym] {
+			rec := []string{sym, string(row.From),
+				strconv.FormatFloat(row.Shares, 'g', -1, 64), f.names[sym]}
+			if err := cw.Write(rec); err != nil {
+				return err
+			}
+		}
+	}
+	cw.Flush()
+	return cw.Error()
+}
+
+// HasRows reports whether any of the given symbols has a share count on
+// record, so a caller can leave the table out rather than bundle an empty one.
+func (f *Fundamentals) HasRows(symbols []string) bool {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+	for _, sym := range symbols {
+		if len(f.shares[NormalizeSymbol(sym)]) > 0 {
+			return true
+		}
+	}
+	return false
+}
