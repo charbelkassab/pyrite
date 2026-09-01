@@ -41,6 +41,9 @@ Usage:
   pyrite examples                   list the bundled strategies
   pyrite report "<strategy>"        the full battery, as one document
   pyrite scenarios "<strategy>"     replay it through named historical crises
+  pyrite diff --example A --example B
+                                    run two strategies over one setup and test
+                                    whether the gap between them is real
 
 Searching, because one backtest is one point in a space:
   pyrite sweep "<strategy>"         every combination, plus a heatmap and
@@ -86,6 +89,8 @@ Common flags:
 
   ledger:       --dataset <key>  --reset [--yes]  --all
   audit:        --csv-dir ./export   audit your own vendor CSVs
+  diff:         two of --example/--code-file, in either combination; the
+                first is A and the second is B. --seed fixes the bootstrap.
   run:          --cost-scan      re-run at 0, 5, 20 and 50 bps of slippage
                 --capacity       re-run from $100k to $1bn with market impact
                                  on, and report the size the edge dies at
@@ -120,6 +125,7 @@ Examples:
   pyrite walkforward "each month hold the 20 strongest S&P 500 names" --universe sp500
   pyrite report "a 60/40 portfolio rebalanced quarterly" --html report.html
   pyrite scenarios --example sixty-forty
+  pyrite diff --example golden-cross --example mean-reversion
 `
 
 func main() {
@@ -158,6 +164,8 @@ func run() error {
 		return cmdMCP(args)
 	case "run":
 		return cmdRun(args)
+	case "diff":
+		return cmdDiff(args)
 	case "audit":
 		return cmdAudit(args)
 	case "selftest":

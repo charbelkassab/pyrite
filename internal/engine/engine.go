@@ -1114,8 +1114,23 @@ func (e *Engine) runStops(day market.Day) []Fill {
 	if len(e.stops) == 0 {
 		return nil
 	}
+	// The stops are held in a map, and two of them firing on the same session
+	// both move cash. Floating-point addition is not associative, so ranging
+	// that map made the session's closing equity depend on Go's randomised
+	// map order: two identical runs of a multi-symbol strategy came out
+	// differing in the last unit in the last place. Small enough to change no
+	// figure this tool prints, and large enough that comparing such a strategy
+	// against itself found a difference where there is none. Same fix, and the
+	// same reason, as the portfolio's own sorted sums.
+	symbols := make([]string, 0, len(e.stops))
+	for sym := range e.stops {
+		symbols = append(symbols, sym)
+	}
+	sort.Strings(symbols)
+
 	var fills []Fill
-	for sym, st := range e.stops {
+	for _, sym := range symbols {
+		st := e.stops[sym]
 		pos := e.portfolio.Position(sym)
 		if pos == nil {
 			continue
