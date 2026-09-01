@@ -44,6 +44,12 @@ smoke: build ## What a new user does in their first five minutes
 # test did not notice because it only ever used --example.
 	./$(BINARY) sweep --code-file examples/golden-cross.js --offline --from 2019-01-02 --to 2023-12-29 --top 3
 	./$(BINARY) walkforward --code-file examples/golden-cross.js --offline --from 2015-01-02 --to 2023-12-29 --train 400 --test 120
+# A bundle that does not reproduce exits non-zero, so the round trip is its
+# own assertion: `make smoke` fails if a change to the engine, the cost model
+# or the metrics quietly stops a saved run from coming back the same.
+	./$(BINARY) bundle export --out /tmp/pyrite-smoke.pyrite --code-file examples/golden-cross.js --offline --from 2019-01-02 --to 2023-12-29
+	./$(BINARY) bundle show /tmp/pyrite-smoke.pyrite
+	./$(BINARY) bundle run /tmp/pyrite-smoke.pyrite
 	./$(BINARY) selftest
 	./$(BINARY) doctor
 

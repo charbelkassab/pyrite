@@ -61,6 +61,14 @@ The one test nobody can iterate against, because the future has not happened:
   pyrite forward verify             check that nothing recorded was altered
   pyrite forward list               what has been written down so far
 
+Handing a result to somebody else, so they can check it:
+  pyrite bundle export --out run.pyrite    the strategy, the spec and every
+                                    bar the run read, in one file
+  pyrite bundle run run.pyrite      re-run it with no network and no keys,
+                                    and get an exact match or the session
+                                    the two runs parted on
+  pyrite bundle show run.pyrite     what is inside, without running it
+
 Before you trust any of it, check the data it rests on:
   pyrite audit AAPL MSFT SPY        unadjusted splits, stale prices, missing
                                     sessions, impossible bars. Exits 2 on a
@@ -207,6 +215,8 @@ func run() error {
 		return cmdScenarios(args)
 	case "examples":
 		return cmdExamples(args)
+	case "bundle":
+		return cmdBundle(args)
 	case "ledger":
 		return cmdLedger(args)
 	case "forward":
@@ -412,55 +422,12 @@ func cmdRun(args []string) error {
 	}
 	opts.ApplyDefaults()
 
-	var plan *strategy.Plan
-	if *example != "" {
-		ex, err := examples.Get(*example)
-		if err != nil {
-			return err
-		}
-		plan = &strategy.Plan{
-			Name: ex.Label, Description: firstNonEmpty(ex.Title, ex.Summary), Code: ex.Code,
-			Universe: ex.Universe, Benchmarks: ex.Benchmarks,
-			Warmup: ex.Warmup, AllowShort: ex.AllowShort,
-		}
-		if plan.Name == "" {
-			plan.Name = ex.Name
-		}
-		// The example's own declarations stand unless the caller overrode
-		// them on the command line.
-		if len(opts.Universe) == 0 && len(ex.Universe) > 0 {
-			opts.Universe = market.ResolveUniverse(strings.Join(ex.Universe, ","))
-			opts.Index = market.IndexUniverse(strings.Join(ex.Universe, ","))
-		}
-		if *benchmark == "SPY" && len(ex.Benchmarks) > 0 {
-			opts.Benchmarks = market.ResolveUniverse(strings.Join(ex.Benchmarks, ","))
-		}
-		if ex.NeedsModel && !a.Cfg.AnyProviderEnabled() {
-			return fmt.Errorf("the %q example calls a model inside the backtest, so it needs one.\n"+
-				"  free   — install Ollama, then: ollama pull qwen2.5-coder:7b\n"+
-				"  hosted — export OPENAI_API_KEY, CEREBRAS_API_KEY or KIMI_API_KEY\n"+
-				"Every other example runs with nothing: pyrite examples", ex.Name)
-		}
-	} else if *codeFile != "" {
-		code, err := os.ReadFile(*codeFile)
-		if err != nil {
-			return err
-		}
-		plan = &strategy.Plan{Name: filepath.Base(*codeFile), Code: string(code)}
-	} else {
-		fmt.Fprintf(os.Stderr, "compiling strategy with %s...\n", a.DescribeRoutes())
-		started := time.Now()
-		plan, err = a.Compiler.Compile(ctx, strategy.Request{
-			Prompt:   prompt,
-			Universe: opts.Universe,
-			Start:    opts.Start,
-			End:      opts.End,
-		})
-		if err != nil {
-			return err
-		}
-		fmt.Fprintf(os.Stderr, "compiled in %s using %s/%s (attempt %d)\n\n",
-			time.Since(started).Round(time.Millisecond), plan.Provider, plan.Model, plan.Attempts)
+	plan, err := loadPlan(ctx, a, planSource{
+		prompt: prompt, example: *example, codeFile: *codeFile,
+		benchmarkFlag: *benchmark,
+	}, &opts)
+	if err != nil {
+		return err
 	}
 
 	if *showCode {
@@ -562,6 +529,80 @@ func cmdRun(args []string) error {
 		printNullComparison(engine.RunNullStrategy(ctx, res, a.Store, 0, spec.Seed))
 	}
 	return nil
+}
+
+// planSource is how a command was told which strategy to run: a bundled
+// example, a file of JavaScript, or plain language to compile.
+type planSource struct {
+	prompt   string
+	example  string
+	codeFile string
+	// benchmarkFlag is the raw --benchmark value, so an example's own
+	// benchmarks can stand when the user did not ask for different ones.
+	benchmarkFlag string
+}
+
+// loadPlan resolves a strategy from the command line, filling in the run
+// options an example declares for itself.
+//
+// Shared by `run` and `bundle export` so the two cannot drift: a bundle that
+// ran a different strategy from the one the same flags give `pyrite run`
+// would be worse than no bundle at all.
+func loadPlan(ctx context.Context, a *app.App, src planSource, opts *app.RunOptions) (*strategy.Plan, error) {
+	switch {
+	case src.example != "":
+		ex, err := examples.Get(src.example)
+		if err != nil {
+			return nil, err
+		}
+		plan := &strategy.Plan{
+			Name: ex.Label, Description: firstNonEmpty(ex.Title, ex.Summary), Code: ex.Code,
+			Universe: ex.Universe, Benchmarks: ex.Benchmarks,
+			Warmup: ex.Warmup, AllowShort: ex.AllowShort,
+		}
+		if plan.Name == "" {
+			plan.Name = ex.Name
+		}
+		// The example's own declarations stand unless the caller overrode
+		// them on the command line.
+		if len(opts.Universe) == 0 && len(ex.Universe) > 0 {
+			opts.Universe = market.ResolveUniverse(strings.Join(ex.Universe, ","))
+			opts.Index = market.IndexUniverse(strings.Join(ex.Universe, ","))
+		}
+		if src.benchmarkFlag == "SPY" && len(ex.Benchmarks) > 0 {
+			opts.Benchmarks = market.ResolveUniverse(strings.Join(ex.Benchmarks, ","))
+		}
+		if ex.NeedsModel && !a.Cfg.AnyProviderEnabled() {
+			return nil, fmt.Errorf("the %q example calls a model inside the backtest, so it needs one.\n"+
+				"  free   — install Ollama, then: ollama pull qwen2.5-coder:7b\n"+
+				"  hosted — export OPENAI_API_KEY, CEREBRAS_API_KEY or KIMI_API_KEY\n"+
+				"Every other example runs with nothing: pyrite examples", ex.Name)
+		}
+		return plan, nil
+
+	case src.codeFile != "":
+		code, err := os.ReadFile(src.codeFile)
+		if err != nil {
+			return nil, err
+		}
+		return &strategy.Plan{Name: filepath.Base(src.codeFile), Code: string(code)}, nil
+
+	default:
+		fmt.Fprintf(os.Stderr, "compiling strategy with %s...\n", a.DescribeRoutes())
+		started := time.Now()
+		plan, err := a.Compiler.Compile(ctx, strategy.Request{
+			Prompt:   src.prompt,
+			Universe: opts.Universe,
+			Start:    opts.Start,
+			End:      opts.End,
+		})
+		if err != nil {
+			return nil, err
+		}
+		fmt.Fprintf(os.Stderr, "compiled in %s using %s/%s (attempt %d)\n\n",
+			time.Since(started).Round(time.Millisecond), plan.Provider, plan.Model, plan.Attempts)
+		return plan, nil
+	}
 }
 
 // printFactors reports what is left of the strategy once known risk premia

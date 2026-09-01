@@ -186,6 +186,38 @@ func (m *Membership) Covers(d Day) bool {
 	return m.Earliest != "" && d >= m.Earliest
 }
 
+// Tenures returns every row in the table, ordered by symbol then start date.
+//
+// The whole table rather than the window a run used: a tenure that ended
+// before the window still decides that a symbol was not a member on day one,
+// and dropping it would change the universe on re-run.
+func (m *Membership) Tenures() []Tenure {
+	out := make([]Tenure, 0, len(m.tenures))
+	for _, sym := range m.Symbols() {
+		out = append(out, m.tenures[sym]...)
+	}
+	return out
+}
+
+// ParseMembership reads a membership table from a reader.
+//
+// LoadMembership reads the embedded copy or a file on disk. A reproducibility
+// bundle carries its own table and must serve it without writing it out
+// first, so that a re-run cannot pick up whichever copy the local machine
+// happens to have.
+func ParseMembership(index string, r io.Reader) (*Membership, error) {
+	index = strings.ToLower(strings.TrimSpace(index))
+	if index == "" {
+		index = "sp500"
+	}
+	m := &Membership{Index: index, tenures: map[string][]Tenure{}, Source: "bundle"}
+	if err := m.parse(r); err != nil {
+		return nil, err
+	}
+	m.finalise()
+	return m, nil
+}
+
 // ---------------------------------------------------------------------------
 // Building the table from Wikipedia.
 

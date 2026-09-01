@@ -752,6 +752,30 @@ func (e *Engine) resolveSetup(ctx context.Context) error {
 	return nil
 }
 
+// LoadedSeries returns every price series this run read, strategy symbols and
+// benchmarks together, keyed by symbol.
+//
+// The whole series rather than the window between Start and End: warm-up
+// indicators read bars from before the first traded session, so anything
+// hoping to reproduce this run — a bundle, say — needs the rows the engine
+// actually held, not the ones the dates suggest.
+//
+// It is only meaningful after Run.
+func (e *Engine) LoadedSeries() map[string]*market.Series {
+	out := make(map[string]*market.Series, len(e.series)+len(e.benchSer))
+	for sym, s := range e.series {
+		if s != nil {
+			out[sym] = s
+		}
+	}
+	for sym, s := range e.benchSer {
+		if s != nil {
+			out[sym] = s
+		}
+	}
+	return out
+}
+
 // loadData fetches every symbol the run needs and builds the trading calendar.
 func (e *Engine) loadData(ctx context.Context) error {
 	symbols := market.DedupeSymbols(e.spec.Universe)

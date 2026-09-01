@@ -120,6 +120,29 @@ func (s *Store) Fundamentals() *Fundamentals { return s.fund }
 // reference data.
 func (s *Store) SetDataDir(dir string) { s.dataDir = dir }
 
+// SetMembership installs a constituent table, so that nothing is loaded from
+// disk or from the embedded copy for that index.
+//
+// A reproducibility bundle carries the table the original run used. Without
+// this, re-running a bundle on a machine with its own membership override
+// would silently trade a different universe and blame the difference on the
+// strategy.
+func (s *Store) SetMembership(m *Membership) {
+	if m == nil {
+		return
+	}
+	name := IndexUniverse(m.Index)
+	if name == "" {
+		name = strings.ToLower(strings.TrimSpace(m.Index))
+	}
+	s.memberMu.Lock()
+	defer s.memberMu.Unlock()
+	if s.members == nil {
+		s.members = map[string]*Membership{}
+	}
+	s.members[name] = m
+}
+
 // Membership returns the point-in-time constituent table for an index,
 // loading it on first use.
 func (s *Store) Membership(index string) (*Membership, error) {
