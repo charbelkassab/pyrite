@@ -892,6 +892,17 @@ func cmdReport(args []string) error {
 	if scan, err := engine.RunCostScan(s.ctx, s.spec, s.app.Store, nil); err == nil {
 		rep.Costs = scan
 	}
+	// The same question at the other end: what the idea is worth once the
+	// account is large enough that its own orders move the price. Five more
+	// runs, which is the cost scan's price again for an answer nothing else
+	// in the document gives.
+	fmt.Fprintf(os.Stderr, "sizing the capacity ladder...\n")
+	if ladder, err := engine.RunCapacity(s.ctx, s.spec, s.app.Store, nil,
+		s.spec.Costs.ImpactCoefficient); err == nil {
+		rep.Capacity = ladder
+	} else {
+		fmt.Fprintf(os.Stderr, "  skipped: %s\n", truncate(err.Error(), 70))
+	}
 	rep.Bootstrap = engine.Bootstrap(rep.Run.Curve, 2000, 21, s.spec.Seed)
 
 	// 5. What is left once known risk premia are taken out. The proxies are

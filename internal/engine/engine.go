@@ -174,6 +174,10 @@ type Result struct {
 	// the fill list alone is not.
 	Trades     []Trade    `json:"trades,omitempty"`
 	TradeStats TradeStats `json:"trade_stats"`
+	// Decay is the average trade's cumulative return at fixed horizons after
+	// entry. It answers when the edge arrives and when it goes, which the
+	// equity curve and the aggregate trade statistics both hide.
+	Decay SignalDecay `json:"decay"`
 	// Risk holds the distribution and drawdown statistics behind the
 	// headline numbers.
 	Risk RiskMetrics `json:"risk"`
@@ -565,6 +569,10 @@ func (e *Engine) Run(ctx context.Context) (*Result, error) {
 
 	res.Trades = BuildTrades(res.Fills, e.series)
 	res.TradeStats = ComputeTradeStats(res.Trades)
+	// Built here rather than behind a flag because the critique reads it and
+	// because it costs one indexed lookup per trade — the price series it
+	// needs are already loaded and will not be after the run returns.
+	res.Decay = ComputeDecay(res.Trades, e.series, nil)
 	res.Risk = ComputeRiskMetrics(res.Curve, res.Metrics.CAGR, e.scale())
 	if benchCurve != nil {
 		res.Risk.AddCapture(res.Curve, benchCurve)

@@ -27,6 +27,7 @@ type Report struct {
 	Sweep       *SweepResult       `json:"-"`
 	WalkForward *WalkForwardResult `json:"-"`
 	Costs       *CostScan          `json:"-"`
+	Capacity    *Capacity          `json:"-"`
 	Bootstrap   BootstrapBands     `json:"bootstrap"`
 	// Factors is the decomposition against known risk premia. It is small
 	// enough to travel in the JSON, unlike the four above.
@@ -64,7 +65,9 @@ func (r *Report) Markdown() string {
 	r.writeOutOfSample(&b)
 	r.writeRobustness(&b)
 	r.writeAttribution(&b)
+	r.writeDecay(&b)
 	r.writeCosts(&b)
+	r.writeCapacity(&b)
 	r.writeFactors(&b)
 	r.writeBootstrap(&b)
 	r.writeObjections(&b)
@@ -96,6 +99,12 @@ func (r *Report) writeVerdict(b *strings.Builder) {
 	}
 	if r.Costs != nil && r.Costs.Verdict != "" {
 		fmt.Fprintf(b, "On costs: %s.\n\n", r.Costs.Verdict)
+	}
+	if r.Capacity != nil && r.Capacity.Verdict != "" {
+		fmt.Fprintf(b, "At size: %s.\n\n", r.Capacity.Verdict)
+	}
+	if r.Run != nil && r.Run.Decay.Verdict != "" {
+		fmt.Fprintf(b, "On the holding period: %s.\n\n", r.Run.Decay.Verdict)
 	}
 	if r.Factors != nil && r.Factors.Verdict != "" {
 		fmt.Fprintf(b, "Against known factors: %s.\n\n", r.Factors.Verdict)
@@ -343,6 +352,92 @@ func (r *Report) writeFactors(b *strings.Builder) {
 		fmt.Fprintf(b, "**%s.**\n\n", upperFirst(f.Verdict))
 	}
 	fmt.Fprintf(b, "%s\n\n", f.ProxyNote)
+}
+
+// writeCapacity reports what the strategy is worth at each account size.
+//
+// It sits beside the cost scan because it is the same question with the other
+// variable moved: the scan charges a friction level somebody chose, and this
+// charges the friction the strategy causes itself by being large.
+func (r *Report) writeCapacity(b *strings.Builder) {
+	c := r.Capacity
+	if c == nil || len(c.Points) == 0 {
+		return
+	}
+	b.WriteString("## How much money can this take\n\n")
+	fmt.Fprintf(b, "The same strategy run at each account size with the square-root "+
+		"impact model enabled at k = %.2f, so a larger order pays a larger price "+
+		"concession for the liquidity it demands. Friction is shown per dollar "+
+		"traded, which is the form that isolates what the ladder is testing: the "+
+		"dollar total rises with the account whatever happens.\n\n",
+		c.ImpactCoefficient)
+
+	b.WriteString("| Capital | Return | Annualised | Sharpe | Max drawdown | Friction |\n")
+	b.WriteString("| --- | ---: | ---: | ---: | ---: | ---: |\n")
+	for _, p := range c.Points {
+		if p.Error != "" {
+			fmt.Fprintf(b, "| %s | failed | | | | |\n", money(p.Capital))
+			continue
+		}
+		fmt.Fprintf(b, "| %s | %s | %s | %s | %s | %s |\n", money(p.Capital),
+			pctText(p.TotalReturn), pctText(p.CAGR), ratioText(p.Sharpe),
+			pctText(p.MaxDrawdown), fmt.Sprintf("%.0f bps", p.CostBps))
+	}
+	b.WriteString("\n")
+
+	if c.ZeroReturnCapital.Defined() || c.BenchmarkCapital.Defined() {
+		if c.ZeroReturnCapital.Defined() {
+			fmt.Fprintf(b, "Largest account still above zero: **%s**.\n",
+				money(float64(c.ZeroReturnCapital)))
+		}
+		if c.BenchmarkCapital.Defined() {
+			fmt.Fprintf(b, "Largest account still beating %s: **%s**.\n",
+				c.BenchmarkLabel, money(float64(c.BenchmarkCapital)))
+		}
+		b.WriteString("\nBoth are interpolated between ladder rungs a factor of ten " +
+			"apart, so they are estimates of an order of magnitude rather than " +
+			"measured limits.\n\n")
+	}
+	if c.Verdict != "" {
+		fmt.Fprintf(b, "**%s.**\n\n", upperFirst(c.Verdict))
+	}
+}
+
+// writeDecay reports when the average trade's edge arrived and when it went.
+func (r *Report) writeDecay(b *strings.Builder) {
+	if r.Run == nil {
+		return
+	}
+	d := r.Run.Decay
+	if len(d.Points) == 0 {
+		return
+	}
+	b.WriteString("## When the edge arrives, and when it goes\n\n")
+	b.WriteString("Each closed round trip's cumulative return from its entry price, " +
+		"averaged across trades at fixed horizons. Returns are gross, signed by " +
+		"direction, on the same basis as the excursion statistics above. A trade " +
+		"shorter than a horizon contributes the return it finished with rather than " +
+		"a zero, so the sample is the same at every row and the columns are " +
+		"comparable; the last column says how many were still open.\n\n")
+
+	b.WriteString("| Bars after entry | Mean cumulative return | Still open |\n")
+	b.WriteString("| --- | ---: | ---: |\n")
+	for _, p := range d.Points {
+		fmt.Fprintf(b, "| %d | %s | %d of %d |\n", p.Bars,
+			pctText(p.MeanReturn), p.StillOpen, d.Trades)
+	}
+	fmt.Fprintf(b, "\nThe curve peaks at **%s after entry**, at %s. The average trade "+
+		"is held for %.1f bars and finishes at %s.",
+		plural(d.PeakBars, "bar"), pctOrNAText(d.PeakReturn),
+		d.MeanBarsHeld, pctOrNAText(d.ExitReturn))
+	if d.GivenBack.Defined() {
+		fmt.Fprintf(b, " That is %s of the peak handed back by the exit.",
+			pctText(float64(d.GivenBack)))
+	}
+	b.WriteString("\n\n")
+	if d.Verdict != "" {
+		fmt.Fprintf(b, "**%s.**\n\n", upperFirst(d.Verdict))
+	}
 }
 
 func (r *Report) writeBootstrap(b *strings.Builder) {

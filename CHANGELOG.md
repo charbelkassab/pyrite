@@ -125,6 +125,16 @@ the CLI flags may all move.
   hierarchical risk parity and inverse volatility, with Ledoit–Wolf shrinkage.
 - Market impact under the square-root law. The `daily-reversal` example
   returns -15.1% on $100,000 and -99.6% on $1bn.
+- **A capacity ladder.** `run --capacity` re-runs the strategy at $100k, $1m,
+  $10m, $100m and $1bn with impact enabled and reports the size at which the
+  edge disappears, interpolated between rungs and against the benchmark as well
+  as against zero. A strategy small enough that impact never reaches it is told
+  so plainly rather than given an invented threshold.
+- **Signal decay.** `run --decay` reports the average round trip's cumulative
+  return 1, 2, 3, 5, 10, 20 and 40 bars after entry, where that curve peaks, and
+  whether it is still rising at the average holding period. A peak long before
+  the exit raises a finding: the entries are working and the exit rule is
+  handing back what they found.
 - Around 35 indicators.
 - A reproducibility manifest on every run: data vendor, per-symbol coverage,
   code hash, cost model, seed, and which models answered.

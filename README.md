@@ -215,6 +215,34 @@ How much survives friction?
 session, so the entire result was the spread it never paid. A backtester that
 defaults slippage to zero shows you the first row and stops.
 
+`--capacity` asks the other half of that question. A backtest on $100,000 says
+nothing about whether the idea survives at size, so the ladder re-runs it at
+five account sizes with the square-root impact model on, and friction is shown
+per dollar traded because that is the only column size can move:
+
+```
+$ pyrite run --example daily-reversal --from 2018-01-02 --to 2023-12-29 --capacity
+
+How much money can this take?
+  Capital              Return         CAGR       Sharpe   Friction
+  $100k               -15.10%       -2.70%         0.10      6 bps
+  $1.0m               -50.87%      -11.19%        -0.15      8 bps
+  $10.0m              -84.09%      -26.44%        -0.68     13 bps
+  $100.0m             -97.15%      -44.82%        -1.48     25 bps
+  $1.0bn              -99.64%      -61.00%        -2.42     58 bps
+```
+
+Where a strategy is still profitable at the bottom of the ladder, the tool
+interpolates the size the edge dies at and says it is an estimate off five
+rungs. Where impact never reaches it — `golden-cross` gives up 1.9 points of
+return between $100k and $1bn — it says that instead of inventing a threshold.
+
+`--decay` is the same scepticism pointed at the holding period: the average
+round trip's cumulative return 1 to 40 bars after entry, where it peaks, and
+whether it is still rising when the position is closed. A curve that peaks on
+day 3 against a 40-day hold means the entries are finding something and the
+exit is giving it back.
+
 <br>
 
 ### 2. `sweep` — the whole parameter space, not one point
@@ -825,7 +853,7 @@ pyrite version
 Common flags: `--from`, `--to`, `--cash`, `--benchmark`, `--universe`,
 `--interval`, `--impact`, `--code-file`, `--offline`, `--json`.
 
-Per command: `run --cost-scan` · `sweep --param fast=10,20,50 --objective
+Per command: `run --cost-scan --capacity --decay` · `sweep --param fast=10,20,50 --objective
 sharpe --csv out.csv` · `walkforward --train 504 --test 126 --embargo 200
 --anchored` · `improve --budget 6 --holdout 0.3 --goal "..."` · `report --out
 report.md` · `ledger --dataset <key> --reset --yes`.
