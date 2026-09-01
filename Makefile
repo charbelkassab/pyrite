@@ -44,6 +44,7 @@ smoke: build ## What a new user does in their first five minutes
 # test did not notice because it only ever used --example.
 	./$(BINARY) sweep --code-file examples/golden-cross.js --offline --from 2019-01-02 --to 2023-12-29 --top 3
 	./$(BINARY) walkforward --code-file examples/golden-cross.js --offline --from 2015-01-02 --to 2023-12-29 --train 400 --test 120
+	./$(BINARY) selftest
 	./$(BINARY) doctor
 
 .PHONY: docker

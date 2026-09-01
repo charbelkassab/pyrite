@@ -53,6 +53,9 @@ Before you trust any of it, check the data it rests on:
   pyrite audit AAPL MSFT SPY        unadjusted splits, stale prices, missing
                                     sessions, impossible bars. Exits 2 on a
                                     critical finding, so a pipeline can stop.
+  pyrite selftest                   run the critique against strategies built
+                                    to be caught, and see which findings land.
+                                    Offline, no key. Exits 1 if one is missed.
 
 Reference data:
   pyrite ingest edgar               point-in-time share counts, from SEC filings
@@ -152,6 +155,8 @@ func run() error {
 		return cmdRun(args)
 	case "audit":
 		return cmdAudit(args)
+	case "selftest":
+		return cmdSelfTest(args)
 	case "doctor", "health":
 		return cmdDoctor(args)
 	case "api":
