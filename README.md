@@ -15,7 +15,7 @@ curve *and* the specific reasons not to believe it.
 [**Try it**](#try-it-in-30-seconds) ·
 [Why](#why-this-exists) ·
 [Install](#install) ·
-[Tour](#a-tour-in-four-commands) ·
+[Tour](#a-tour-in-five-commands) ·
 [What it measures](#what-it-measures) ·
 [Honest data](#the-data-is-the-hard-part) ·
 [Python](#from-python) ·
@@ -178,9 +178,9 @@ is none.
 
 ---
 
-## A tour in four commands
+## A tour in five commands
 
-The same strategy, looked at four ways. Each one is harder to fool than the
+The same strategy, looked at five ways. Each one is harder to fool than the
 last, and the story they tell together is the point of the tool.
 
 <br>
@@ -363,7 +363,59 @@ leak across the boundary.
 
 <br>
 
-### 4. `improve` — "make this better", without the usual trap
+### 4. `cpcv` — one path is one draw
+
+Walk-forward answered the question, and it answered it once. Train on 1-2, test
+on 3, train on 2-3, test on 4: that is a single out-of-sample path, and whether
+it was a lucky one is not answerable from the path itself.
+
+This cuts the period into groups and holds out every combination of them
+instead. Each group is tested several times under parameters chosen on several
+different training sets, so the same data reassembles into several distinct
+full-length out-of-sample paths — and the answer becomes a distribution.
+
+```bash
+pyrite cpcv --example golden-cross --from 2010-01-05 --to 2023-12-29
+```
+
+```
+What the spread says, across 5 out-of-sample paths
+                                 return         CAGR     Sharpe
+  Median                         69.79%        3.86%       0.53
+  5th percentile                 63.57%        3.58%       0.50
+  95th percentile                80.75%        4.32%       0.61
+  Paths profitable               5 of 5
+
+  Choosing nothing: the same groups, one configuration held throughout
+  Median configuration           94.87%
+
+How much of this is the selection?
+  Overfitting prob., purged splits       60.00%   (15 splits)
+    the sweep's unpurged partition       47.14%   (70 splits)
+
+The single walk-forward path, for comparison
+  Annualised                      2.11%   0th percentile of the paths
+```
+
+**Every path made money, and the selection is still worth nothing.** Holding one
+configuration over the same groups and choosing nothing returned 94.87% against
+the median path's 69.79%: the search subtracted 25 points. The paths are
+profitable because the market rose, not because anything was learnt — which is
+the reading a single positive out-of-sample number cannot give you and a
+distribution beside its own control can.
+
+Purging and the embargo are the point. Sessions on both sides of every held-out
+group are withheld from training, by default the strategy's whole warm-up,
+because an indicator computed at the boundary is otherwise made of the data it
+is being tested against. The command reports what that cost — the purged column
+is the price of taking the leakage seriously.
+
+It is the most expensive thing in the tool: one backtest per configuration per
+group. In `pyrite report` it sits behind `--cpcv` for that reason.
+
+<br>
+
+### 5. `improve` — "make this better", without the usual trap
 
 ```bash
 pyrite improve "a golden cross on SPY" --budget 8
@@ -848,6 +900,8 @@ pyrite diff --example A --example B
 pyrite sweep "<strategy>"         every combination, plus a heatmap and
                                   the overfitting statistics
 pyrite walkforward "<strategy>"   choose on one period, report on the next
+pyrite cpcv "<strategy>"          hold out every combination of periods and
+                                  report the spread of the out-of-sample paths
 pyrite improve "<strategy>"       guided search against a blind holdout
 pyrite ledger                     how much searching each dataset has already
                                   absorbed, across every past session
@@ -869,8 +923,9 @@ Common flags: `--from`, `--to`, `--cash`, `--benchmark`, `--universe`,
 `--interval`, `--impact`, `--code-file`, `--offline`, `--json`.
 
 Per command: `run --cost-scan --capacity --decay` · `diff` takes two of
-`--example`/`--code-file` in either combination, first is A · `sweep --param fast=10,20,50 --objective
-sharpe --csv out.csv` · `walkforward --train 504 --test 126 --embargo 200
+`--example`/`--code-file` in either combination, first is A · `sweep --param
+fast=10,20,50 --objective sharpe --csv out.csv` · `cpcv --groups 6
+--test-groups 2` · `walkforward --train 504 --test 126 --embargo 200
 --anchored` · `improve --budget 6 --holdout 0.3 --goal "..."` · `report --out
 report.md --html report.html` · `scenarios --list` · `ledger --dataset <key>
 --reset --yes`.

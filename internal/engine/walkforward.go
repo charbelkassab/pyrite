@@ -39,6 +39,15 @@ type WalkForwardSpec struct {
 	MaxCombos int
 }
 
+// defaultTrainDays and defaultTestDays are the rolling scheme's windows: two
+// years to choose on, half a year to report on. Named because the
+// cross-validation has to describe the walk-forward path it compares itself
+// against, and two copies of 126 would eventually stop agreeing.
+const (
+	defaultTrainDays = 504
+	defaultTestDays  = 126
+)
+
 // Fold is one train/test pair.
 type Fold struct {
 	Index      int        `json:"index"`
@@ -137,16 +146,12 @@ func RunWalkForward(ctx context.Context, ws WalkForwardSpec, store *market.Store
 		return nil, err
 	}
 	if ws.TrainDays <= 0 {
-		ws.TrainDays = 504 // two years
+		ws.TrainDays = defaultTrainDays
 	}
 	if ws.TestDays <= 0 {
-		ws.TestDays = 126 // half a year
+		ws.TestDays = defaultTestDays
 	}
-	if ws.Embargo < 0 {
-		ws.Embargo = 0
-	} else if ws.Embargo == 0 {
-		ws.Embargo = ws.Base.Warmup
-	}
+	ws.Embargo = resolveEmbargo(ws.Embargo, ws.Base.Warmup)
 
 	windows := planFolds(len(days), ws.TrainDays, ws.TestDays, ws.Embargo, ws.Anchored)
 	if len(windows) == 0 {
@@ -271,6 +276,23 @@ func RunWalkForward(ctx context.Context, ws WalkForwardSpec, store *market.Store
 	}
 	res.Verdict = walkForwardVerdict(res)
 	return res, nil
+}
+
+// resolveEmbargo settles how much data sits between training and test.
+//
+// Negative means none at all. Zero means the caller did not choose, and the
+// right default is the strategy's warm-up: that is exactly the horizon over
+// which an indicator computed on the first test session is still made of
+// training data. Shared with the cross-validation so the two schemes cannot
+// drift into two subtly different notions of the same thing.
+func resolveEmbargo(requested, warmup int) int {
+	if requested < 0 {
+		return 0
+	}
+	if requested == 0 {
+		return warmup
+	}
+	return requested
 }
 
 // window is one fold's index ranges into the calendar.

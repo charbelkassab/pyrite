@@ -733,6 +733,10 @@ type htmlDoc struct {
 	OOSIntro    string
 	OutOfSample *table
 
+	CPCVIntro string
+	CPCVPaths *table
+	CPCV      *table
+
 	SearchIntro string
 	Search      *table
 
@@ -784,6 +788,7 @@ func (r *Report) htmlModel() *htmlDoc {
 	r.buildVerdict(d)
 	r.buildResults(d)
 	r.buildOutOfSample(d)
+	r.buildCrossValidation(d)
 	r.buildSearch(d)
 	r.buildAttribution(d)
 	r.buildCosts(d)
@@ -920,6 +925,61 @@ func (r *Report) buildOutOfSample(d *htmlDoc) {
 	add("Positive test windows", fmt.Sprintf("%d of %d", wf.ConsistentFolds, len(wf.Folds)))
 	add("Parameter stability", pctSafe(wf.ParamStability))
 	d.OutOfSample = t
+}
+
+// buildCrossValidation renders the spread of out-of-sample paths.
+func (r *Report) buildCrossValidation(d *htmlDoc) {
+	c := r.CPCV
+	if c == nil || c.ValidPaths == 0 {
+		return
+	}
+	d.CPCVIntro = fmt.Sprintf("The period was cut into %d groups and every combination of %d of "+
+		"them was held out in turn, with %d sessions purged from training either side of each. "+
+		"That is %d splits, which reassemble into %d full-length out-of-sample paths. The section "+
+		"above reports one such path; this one reports the range the same data supports.",
+		c.Groups, c.TestGroups, c.Embargo, len(c.Splits), c.ValidPaths)
+
+	paths := &table{Head: []cell{head("Path", ""), head("Return", "num"),
+		head("Annualised", "num"), head("Sharpe", "num"), head("Max drawdown", "num")}}
+	for _, p := range c.Paths {
+		if p.Error != "" {
+			continue
+		}
+		paths.Rows = append(paths.Rows, []cell{
+			rowHead(strconv.Itoa(p.Index)), num(pctSafe(p.Metrics.TotalReturn)),
+			num(pctSafe(p.Metrics.CAGR)), num(ratioText(p.Metrics.Sharpe)),
+			num(pctSafe(p.Metrics.MaxDrawdown))})
+	}
+	d.CPCVPaths = paths
+
+	t := &table{Head: []cell{head("", ""), head("Value", "num"), head("", "")}}
+	add := func(label, value, note string) {
+		t.Rows = append(t.Rows, []cell{rowHead(label), num(value), {Text: note, Class: "wrap"}})
+	}
+	add("Median path", pctOrNAText(c.Return.Median), "")
+	add("5th percentile", pctOrNAText(c.Return.P05), "")
+	add("95th percentile", pctOrNAText(c.Return.P95), "")
+	add("Worst path", pctOrNAText(c.Return.Worst), "")
+	add("Paths profitable", fmt.Sprintf("%d of %d", c.ProfitablePaths, c.ValidPaths), "")
+	if c.NoSelection.Median.Defined() {
+		add("Choosing nothing", pctOrNAText(c.NoSelection.Median),
+			fmt.Sprintf("one configuration held over the same groups, at the median of all %d; "+
+				"the difference from the paths above is all the selection can claim", c.Combos))
+	}
+	if c.PBO.Defined() {
+		add("Probability of backtest overfitting", pctOrNAText(c.PBO),
+			fmt.Sprintf("over %d purged splits; 50%% is a coin flip", c.PBOSplits))
+	}
+	if c.BlockPBO.Defined() {
+		add("... the sweep's unpurged partition", pctOrNAText(c.BlockPBO),
+			fmt.Sprintf("over %d splits, cut into blocks with nothing withheld between them",
+				c.BlockPBOSplits))
+	}
+	if wf := c.WalkForward; wf != nil {
+		add("The walk-forward path, annualised", pctOrNAText(wf.CAGR),
+			fmt.Sprintf("one draw, at the %s of these paths", percentileText(wf.CAGRPercentile)))
+	}
+	d.CPCV = t
 }
 
 func (r *Report) buildSearch(d *htmlDoc) {
@@ -1182,6 +1242,7 @@ func buildNav(d *htmlDoc) []navItem {
 	add(len(d.Findings) > 0, "objections", "Objections")
 	add(d.Results != nil, "results", "Results")
 	add(d.OutOfSample != nil, "out-of-sample", "Out of sample")
+	add(d.CPCV != nil, "cross-validation", "Every combination")
 	add(d.Search != nil, "search", "The search")
 	add(d.Years != nil, "attribution", "Where it came from")
 	add(d.Costs != nil, "costs", "Friction")
@@ -1580,6 +1641,15 @@ td.mono { font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
   <h2>Out of sample</h2>
   <p class="intro">{{.OOSIntro}}</p>
   {{template "table" .OutOfSample}}
+</section>
+{{end}}
+
+{{if .CPCV}}
+<section id="cross-validation">
+  <h2>Every combination held out</h2>
+  <p class="intro">{{.CPCVIntro}}</p>
+  {{template "table" .CPCVPaths}}
+  {{template "table" .CPCV}}
 </section>
 {{end}}
 

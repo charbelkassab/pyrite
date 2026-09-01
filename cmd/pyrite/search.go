@@ -821,6 +821,13 @@ func cmdReport(args []string) error {
 	skipSweep := fs.Bool("no-sweep", false, "skip the parameter search")
 	skipWF := fs.Bool("no-walkforward", false, "skip the walk-forward evaluation")
 	skipScenarios := fs.Bool("no-scenarios", false, "skip the historical crisis replay")
+	// Off by default, unlike everything else here: the cross-validation costs
+	// one backtest per combination per group, which on a wide grid is more
+	// than the rest of the document put together.
+	withCPCV := fs.Bool("cpcv", false,
+		"also hold out every combination of groups and report the spread of out-of-sample paths")
+	groups := fs.Int("groups", 6, "groups the cross-validation cuts the period into")
+	testGroups := fs.Int("test-groups", 2, "groups the cross-validation holds out per split")
 	train := fs.Int("train", 504, "walk-forward training window in sessions")
 	test := fs.Int("test", 126, "walk-forward test window in sessions")
 
@@ -886,6 +893,24 @@ func cmdReport(args []string) error {
 			fmt.Fprintf(os.Stderr, "  skipped: %s\n", truncate(err.Error(), 70))
 		} else {
 			rep.WalkForward = wf
+		}
+	}
+
+	// 3b. The same question asked of every combination of held-out periods
+	//     rather than of one rolling schedule, which is the only way to see
+	//     whether the single path above was a finding or a draw. Behind a
+	//     flag: it is the most expensive section in the document.
+	if *withCPCV {
+		fmt.Fprintf(os.Stderr, "cross-validating every combination...\n")
+		cv, err := engine.RunCPCV(s.ctx, engine.CPCVSpec{
+			Base: s.spec, Grids: params.grids, Groups: *groups, TestGroups: *testGroups,
+			Objective: *objective, Workers: *workers, MaxCombos: *maxCombos,
+			TrainDays: *train, TestDays: *test,
+		}, s.app.Store, nil)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "  skipped: %s\n", truncate(err.Error(), 70))
+		} else {
+			rep.CPCV = cv
 		}
 	}
 

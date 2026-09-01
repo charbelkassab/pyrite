@@ -43,6 +43,7 @@ optimize.go      min-variance, risk parity, HRP, Ledoit-Wolf shrinkage
 params.go        declared tunables and grid expansion
 sweep.go         the parallel search
 walkforward.go   rolling train/test evaluation
+cpcv.go          every combination held out, and the spread of the paths
 robustness.go    deflated Sharpe, PBO, bootstrap, plateau
 realitycheck.go  White's Reality Check and Hansen's SPA over the trials
 nullstrategy.go  the winner against random entries matched on its habits
