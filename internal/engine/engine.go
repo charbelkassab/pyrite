@@ -192,6 +192,11 @@ type Result struct {
 	// Critique is the deterministic assessment of this result: what is wrong
 	// with it, with the numbers that say so.
 	Critique Critique `json:"critique"`
+	// DataQuality lists disqualifying defects found in the price data this
+	// run was built on. Every statistic above is downstream of those bars,
+	// so a defect here outranks anything the strategy did. `pyrite audit`
+	// runs the full battery; this is the subset cheap enough for every run.
+	DataQuality []market.Finding `json:"data_quality,omitempty"`
 
 	Warnings []string `json:"warnings,omitempty"`
 	// StrategyErrors counts days where onDay threw.
@@ -293,6 +298,9 @@ type Engine struct {
 	// of them are revised so the critique can say so.
 	econ        map[string]*market.EconSeries
 	econRevised map[string]bool
+	// dataDefects holds the disqualifying data-quality findings from the
+	// bars this run loaded.
+	dataDefects []market.Finding
 }
 
 // stopOrder is a standing exit registered by the strategy.
@@ -572,6 +580,7 @@ func (e *Engine) Run(ctx context.Context) (*Result, error) {
 	}
 	res.Rolling = RollingStats(res.Curve, benchCurve, window, e.scale())
 	res.Manifest = e.buildManifest(res)
+	res.DataQuality = e.dataDefects
 	res.Params = e.paramDecls
 	res.ParamValues = e.activeParams()
 	// The critique reads everything above it, so it is built last. It is
@@ -832,8 +841,47 @@ func (e *Engine) loadData(ctx context.Context) error {
 		e.spec.Start = e.days[i]
 	}
 
+	e.auditData(loadFrom)
 	e.precomputeCalendarFlags()
 	return nil
+}
+
+// maxDataDefects caps how many data-quality findings one run carries. A
+// universe with a broken vendor behind it can produce one per symbol, and a
+// critique is meant to be read.
+const maxDataDefects = 10
+
+// auditData scans the loaded bars for defects that would make the result a
+// measurement of the data rather than of the strategy.
+//
+// Only the disqualifying checks run, over the window the run actually uses:
+// this is on the path of every backtest, so it is a few linear passes over
+// bars already in memory and allocates nothing unless something is wrong.
+// The full battery, including the calendar and the softer findings, is
+// `pyrite audit`.
+func (e *Engine) auditData(from market.Day) {
+	e.dataDefects = nil
+	symbols := make([]string, 0, len(e.series))
+	for sym := range e.series {
+		symbols = append(symbols, sym)
+	}
+	// Map order is random, so without this the same run reports its defects
+	// in a different order each time and two runs stop being comparable.
+	sort.Strings(symbols)
+	for _, sym := range symbols {
+		if len(e.dataDefects) >= maxDataDefects {
+			return
+		}
+		ser := e.series[sym]
+		if ser == nil {
+			continue
+		}
+		// Judge only the bars this run reads. A cached series often extends
+		// far beyond the window, and a defect in 1998 says nothing about a
+		// backtest that starts in 2020.
+		window := &market.Series{Symbol: sym, Bars: ser.Range(from, e.spec.End.EndOfDay())}
+		e.dataDefects = append(e.dataDefects, market.AuditCritical(window)...)
+	}
 }
 
 // earliestPossible bounds a full-history request. No symbol served here has

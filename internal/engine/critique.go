@@ -176,6 +176,26 @@ func Criticise(res *Result) Critique {
 			m.MaxDrawdown*100)
 	}
 
+	// --- Is the data underneath this worth measuring? --------------------
+
+	// This comes before the mechanics because it outranks them. Every number
+	// above is computed from the price series, so a defect in the series is
+	// not one criticism among several: it is the reason the rest of the page
+	// does not mean what it says.
+	if n := len(res.DataQuality); n > 0 {
+		f := res.DataQuality[0]
+		rest := ""
+		switch {
+		case n == 2:
+			rest = " One further data defect was found across the universe."
+		case n > 2:
+			rest = fmt.Sprintf(" %d further data defects were found across the universe.", n-1)
+		}
+		add(SeverityCritical, "the price data is not what it claims to be",
+			"%s: %s%s Run `pyrite audit %s` for the full inspection.",
+			f.Symbol, f.Detail, rest, f.Symbol)
+	}
+
 	// --- Are the mechanics honest? ---------------------------------------
 
 	if res.Spec.Fill == FillClose {
