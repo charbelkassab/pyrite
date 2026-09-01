@@ -651,6 +651,52 @@ func TestRebalanceIsReproducible(t *testing.T) {
 	}
 }
 
+// Standing stops are held in a map, and several can fire on one session. Each
+// one moves cash, and floating-point addition is not associative, so the order
+// they are evaluated in decided the last unit in the last place of every
+// figure downstream — the third instance of this bug in the engine, after the
+// order queue and the portfolio's own sums.
+//
+// It was invisible in a single run and unmissable in a comparison: `pyrite
+// diff` running a multi-symbol strategy against itself reported a return
+// difference of a fraction of a basis point where there is none at all.
+func TestSimultaneousStopsAreEvaluatedInAFixedOrder(t *testing.T) {
+	// A tight stop on everything held, so the exits cluster on the same days.
+	spec := baseSpec(`
+		function onDay(ctx) {
+			for (const s of ctx.symbols()) {
+				if (!ctx.hasPosition(s)) ctx.buy(s, { pctEquity: 0.3, stopLoss: 0.02 });
+			}
+		}
+	`)
+	spec.InitialCash = 50000
+
+	var first float64
+	var stopFills int
+	for i := 0; i < 6; i++ {
+		res, err := New(spec, newTestStore(t)).Run(context.Background())
+		if err != nil {
+			t.Fatalf("run %d: %v", i, err)
+		}
+		if i == 0 {
+			first = res.Metrics.TotalReturn
+			for _, f := range res.Fills {
+				if f.Tag == "stop" {
+					stopFills++
+				}
+			}
+			if stopFills < 5 {
+				t.Fatalf("only %d stop fills, so this proves nothing", stopFills)
+			}
+			continue
+		}
+		if got := res.Metrics.TotalReturn; got != first {
+			t.Fatalf("run %d returned %v, run 0 returned %v (delta %v): identical "+
+				"inputs must give identical output", i, got, first, got-first)
+		}
+	}
+}
+
 // The order the book receives target orders must be stable and sorted, which
 // is what makes the run above reproducible.
 func TestEqualWeightQueuesOrdersInSortedOrder(t *testing.T) {

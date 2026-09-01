@@ -83,6 +83,20 @@ the CLI flags may all move.
   academic series, which is stated in the output rather than buried here. A
   proxy with no data over the period is dropped and named. `pyrite report`
   carries the same analysis as its own section.
+- **Statistical strategy diffing.** `pyrite diff` runs two strategies over one
+  setup and answers whether either is actually better. A paired t-test on the
+  per-session return differences — paired, because both sides trade the same
+  days and the shared market movement an unpaired test leaves in the
+  denominator swamps anything an author is likely to have changed — with
+  Newey-West standard errors from the same bandwidth rule the factor table
+  uses, and the uncorrected statistic printed beside it so the size of the
+  correction is visible. A percentile interval on the Sharpe difference from a
+  stationary bootstrap, resampled on one draw of dates so the pairing survives.
+  The correlation between the two return series and the share of sessions they
+  ended holding the same book, because two strategies correlated at 0.99 are
+  one strategy and saying so is usually the most useful output. Runs whose
+  setups differ are refused rather than compared. A near-identical pair gets
+  the finding it deserves: you did not actually change anything.
 - **Reality check and SPA.** `pyrite sweep` runs White's Reality Check and
   Hansen's Superior Predictive Ability test over every trial's return series at
   once, stationary-bootstrapped, so the search is judged as the search it was
@@ -206,6 +220,14 @@ the CLI flags may all move.
   orders arrive last: one example returned 17.16%, 16.21% and 16.35% on three
   consecutive runs over identical data. Single-symbol strategies were never
   affected. The `--param` path had the same bug in its grid merge.
+- **Standing stops made a multi-symbol run irreproducible.** The stops were
+  evaluated by ranging over a Go map, so when several fired on the same session
+  the order they moved cash in was randomised, and floating-point addition is
+  not associative: the same strategy over the same data differed in the last
+  unit in the last place. Too small to change any figure printed, and large
+  enough that `pyrite diff` comparing a strategy against itself found a
+  difference where there is none. The third instance of this bug, after the
+  order queue and the portfolio's own sums.
 - **A strategy could write files outside its sandbox.** The response cache
   used its key directly as a file path, and `websearch` builds that key from
   the search query — which comes from strategy code. `ctx.news()` or
