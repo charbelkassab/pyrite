@@ -320,6 +320,15 @@ func cmdRun(args []string) error {
 		"market impact coefficient; 1 is the usual estimate, 0 disables the model")
 	interval := fs.String("interval", "1d",
 		"bar size: "+strings.Join(market.IntervalNames(), ", "))
+	calendar := fs.String("calendar", "",
+		"trading calendar to annualise by ("+strings.Join(market.CalendarNames(), ", ")+
+			"); the default infers it from the data")
+	borrowFile := fs.String("borrow-file", "",
+		"CSV of per-symbol short borrow rates: symbol,annual_pct[,available]")
+	// A bundled example and a compiled strategy both declare this for
+	// themselves; a hand-written --code-file has nowhere to say it, so
+	// without the flag its shorts are silently clamped to flat.
+	allowShort := fs.Bool("allow-short", false, "permit short positions")
 	warmupFlag := fs.Int("warmup", 0, "bars of history to load before the start date")
 	// Separate the prompt from the flags before parsing. Go's flag package
 	// stops at the first positional argument, so without this a command like
@@ -446,6 +455,9 @@ func cmdRun(args []string) error {
 	if *warmupFlag > 0 {
 		spec.Warmup = *warmupFlag
 	}
+	if *allowShort {
+		spec.AllowShort = true
+	}
 	spec.Costs.ImpactCoefficient = *impact
 	iv, err := market.ParseInterval(*interval)
 	if err != nil {
@@ -456,6 +468,21 @@ func cmdRun(args []string) error {
 			"  Yahoo serves intraday: set PYRITE_DATA_PROVIDERS=yahoo", iv)
 	}
 	spec.Interval = iv
+	cal, err := market.ParseCalendar(*calendar)
+	if err != nil {
+		return err
+	}
+	spec.Calendar = cal
+	// The command line wins over the config file, because a borrow file is
+	// the kind of thing that belongs to one experiment rather than to the
+	// installation.
+	if path := firstNonEmpty(*borrowFile, a.Cfg.BorrowCSV); path != "" {
+		sched, err := engine.LoadBorrowCSV(path)
+		if err != nil {
+			return err
+		}
+		spec.Costs.Borrow = sched
+	}
 	lastPct := -1
 	opts.Progress = func(done, total int, day market.Day) {
 		pct := done * 100 / total
@@ -522,7 +549,7 @@ func cmdRun(args []string) error {
 	// was the strategy rather than an exposure that already has a name.
 	if *factors {
 		fx, err := engine.AnalyseFactors(ctx, res.Curve, a.Store,
-			spec.Interval, engine.ScaleFor(spec.Interval, spec.RiskFreeRate), nil)
+			spec.Interval, res.Spec.Scale(), nil)
 		if err != nil {
 			return err
 		}
@@ -699,8 +726,13 @@ func printReport(plan *strategy.Plan, res *engine.Result) {
 	if res.Spec.Interval.Intraday() {
 		unit = string(res.Spec.Interval) + " bars"
 	}
-	fmt.Printf("\n%s to %s   %d %s   universe of %d\n\n",
+	fmt.Printf("\n%s to %s   %d %s   universe of %d\n",
 		res.Spec.Start, res.Spec.End, m.TradingDays, unit, len(res.Spec.Universe))
+	// The annualisation factor is stated rather than left to be inferred:
+	// the same trades scored on 252 and on 365 give Sharpes 20% apart, and
+	// nothing else on this page says which was used.
+	fmt.Printf("Annualised on the %s calendar: %s bars a year\n\n",
+		res.Manifest.TradingCalendar.Label(), trimTrailingZeros(res.Manifest.PeriodsPerYear))
 
 	fmt.Printf("  %-22s %14s\n", "Starting capital", money(m.StartValue))
 	fmt.Printf("  %-22s %14s\n", "Final value", money(m.EndValue))
@@ -718,6 +750,7 @@ func printReport(plan *strategy.Plan, res *engine.Result) {
 	fmt.Printf("  %-22s %14s\n", "Costs paid", money(m.TotalCosts))
 
 	printRoundTrips(res)
+	printBorrow(res)
 	printRisk(res)
 	printByYear(res)
 	printRegimes(res)
@@ -990,6 +1023,52 @@ func wrapIndent(s string, width int, indent string) string {
 	}
 	lines = append(lines, line)
 	return strings.Join(lines, "\n"+indent)
+}
+
+// printBorrow reports what the short side cost, per name, and what it was
+// refused.
+//
+// Only shown when the run actually went short. A long-only book has nothing
+// to say here and an empty section reads as a missing number.
+func printBorrow(res *engine.Result) {
+	b := res.Borrow
+	if !b.Charged() {
+		return
+	}
+	fmt.Printf("\nShort borrow\n")
+	fmt.Printf("  %-22s %14s\n", "Total paid", money(b.TotalCost))
+	if len(b.Names) > 0 {
+		fmt.Printf("  %-22s %8s %6s %8s\n", "Name", "Rate", "Days", "Cost")
+		for i, n := range b.Names {
+			if i >= 8 {
+				fmt.Printf("  ... and %d more\n", len(b.Names)-8)
+				break
+			}
+			label := n.Symbol
+			if n.HardToBorrow {
+				label += " *"
+			}
+			fmt.Printf("  %-22s %7.2f%% %6d %8s\n",
+				truncate(label, 22), n.AnnualPct*100, n.Sessions, compactMoney(n.Cost))
+		}
+	}
+	for _, r := range b.Refused {
+		fmt.Printf("  %-22s %14s\n", "No locate: "+r.Symbol,
+			fmt.Sprintf("%d refused", r.Orders))
+	}
+	if !b.PerName {
+		fmt.Printf("  %s\n", wrapIndent("Every name was charged the same rate; no borrow "+
+			"file was supplied. Pass --borrow-file to price the hard ones.", 74, "  "))
+	}
+}
+
+// trimTrailingZeros prints a bar count without a pointless decimal tail: 252,
+// not 252.00, and 98280 rather than 98280.0.
+func trimTrailingZeros(v float64) string {
+	if v == math.Trunc(v) {
+		return fmt.Sprintf("%.0f", v)
+	}
+	return fmt.Sprintf("%.1f", v)
 }
 
 // printRoundTrips reports the entry-to-exit view of the run.

@@ -44,6 +44,24 @@ type Manifest struct {
 	CalendarFrom market.Day `json:"calendar_from,omitempty"`
 	CalendarTo   market.Day `json:"calendar_to,omitempty"`
 
+	// TradingCalendar is the market whose sessions every annualised figure
+	// was scaled by, and PeriodsPerYear the divisor that follows from it and
+	// the bar size. Two runs identical in every other respect and differing
+	// here report different Sharpes from the same trades, so it belongs with
+	// the rest of the provenance rather than being left to be inferred.
+	TradingCalendar market.Calendar `json:"trading_calendar,omitempty"`
+	PeriodsPerYear  float64         `json:"periods_per_year,omitempty"`
+	// Calendars lists every calendar the universe traded on, when it held
+	// more than one.
+	Calendars []string `json:"calendars,omitempty"`
+
+	// BorrowNames and BorrowSHA256 identify the short borrow schedule
+	// without carrying it, for the same reason the code is hashed rather
+	// than embedded: a stock loan file runs to thousands of names and this
+	// sits on every saved run.
+	BorrowNames  int    `json:"borrow_names,omitempty"`
+	BorrowSHA256 string `json:"borrow_sha256,omitempty"`
+
 	// Strategy provenance. Hashes rather than bodies, so a manifest stays
 	// small enough to sit on every result.
 	CodeSHA256   string `json:"code_sha256"`
@@ -125,6 +143,18 @@ func (e *Engine) buildManifest(res *Result) Manifest {
 	m.CalendarDays = len(e.days)
 	if len(e.days) > 0 {
 		m.CalendarFrom, m.CalendarTo = e.days[0], e.days[len(e.days)-1]
+	}
+	m.BorrowNames = e.spec.Costs.Borrow.Names()
+	m.BorrowSHA256 = e.spec.Costs.Borrow.Fingerprint()
+	// Hashed above, so the table itself does not travel with every result.
+	m.Costs.Borrow = nil
+
+	sc := e.scale()
+	m.TradingCalendar, m.PeriodsPerYear = sc.Market(), sc.Periods()
+	if len(e.calendars) > 1 {
+		for _, c := range e.calendars {
+			m.Calendars = append(m.Calendars, c.String())
+		}
 	}
 
 	m.AICacheHits = e.aiCacheHits

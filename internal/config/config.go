@@ -94,6 +94,12 @@ type Config struct {
 	// chain. It is the only source that can hold delisted securities, which
 	// no free live endpoint serves.
 	CSVDir string `json:"csv_dir,omitempty"`
+
+	// BorrowCSV points at a per-symbol short borrow file:
+	// symbol,annual_pct[,available]. Without one every short is charged the
+	// same general collateral rate, which understates the friction on
+	// exactly the names a short strategy tends to pick.
+	BorrowCSV string `json:"borrow_csv,omitempty"`
 }
 
 // Defaults returns the built-in configuration.
@@ -235,6 +241,9 @@ func (c *Config) applyEnv() {
 	}
 	if v := strings.TrimSpace(os.Getenv("PYRITE_CSV_DIR")); v != "" {
 		c.CSVDir = v
+	}
+	if v := strings.TrimSpace(os.Getenv("PYRITE_BORROW_CSV")); v != "" {
+		c.BorrowCSV = v
 	}
 	if v := os.Getenv("PYRITE_SEARCH_PROVIDER"); v != "" {
 		c.SearchProvider = v

@@ -626,8 +626,9 @@ func (r *Report) writeMechanics(b *strings.Builder) {
 	fmt.Fprintf(b, "| Data | %s, %s, %d sessions |\n",
 		m.DataProvider, plural(len(m.Coverage), "symbol"), m.CalendarDays)
 	fmt.Fprintf(b, "| Fills | %s |\n", fillText(m.Fill))
-	fmt.Fprintf(b, "| Costs | %.0f bps slippage, %.2f%% commission, %.1f%% short borrow |\n",
-		m.Costs.SlippageBps, m.Costs.CommissionPct*100, m.Costs.ShortBorrowAnnualPct*100)
+	fmt.Fprintf(b, "| Annualised on | the %s calendar, %s bars a year |\n",
+		m.TradingCalendar.Label(), trimFloat(m.PeriodsPerYear))
+	fmt.Fprintf(b, "| Costs | %s |\n", costsText(m.Costs, m.BorrowNames))
 	fmt.Fprintf(b, "| Starting capital | %s |\n", money(m.InitialCash))
 	fmt.Fprintf(b, "| Code hash | `%s` |\n", shortHash(m.CodeSHA256))
 	fmt.Fprintf(b, "| Build | %s, %s |\n", m.Version, m.GoVersion)
@@ -710,6 +711,18 @@ func plural(n int, noun string) string {
 		return fmt.Sprintf("1 %s", noun)
 	}
 	return fmt.Sprintf("%d %ss", n, noun)
+}
+
+// costsText states the friction model in one line, and says whether the short
+// borrow was one rate for everything or priced per name. The count comes from
+// the manifest rather than the schedule, which is hashed rather than carried.
+func costsText(c Costs, borrowNames int) string {
+	out := fmt.Sprintf("%.0f bps slippage, %.2f%% commission, %.1f%% short borrow",
+		c.SlippageBps, c.CommissionPct*100, c.ShortBorrowAnnualPct*100)
+	if borrowNames > 0 {
+		return out + fmt.Sprintf(" (%s priced separately)", plural(borrowNames, "name"))
+	}
+	return out + " on every name"
 }
 
 func shortHash(h string) string {

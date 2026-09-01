@@ -220,8 +220,14 @@ func (s *Server) handleSeries(w http.ResponseWriter, r *http.Request) {
 		Metrics engine.Metrics       `json:"metrics"`
 	}
 	resp := make([]out, 0, len(series))
-	// Use the union calendar so overlaid series align with each other.
+	// Use the union calendar so overlaid series align with each other, and
+	// annualise by it for the same reason: every curve below is sampled on
+	// these days, so a comparison that includes a crypto pair is sampled 365
+	// times a year and scaling it by 252 would understate every volatility
+	// on the chart.
 	days := market.TradingCalendar(series, from, to)
+	cal, _ := market.CalendarForSeries(series)
+	sc := engine.ScaleOn(market.Interval1d, cal, 0)
 	for _, sym := range symbols {
 		ser, ok := series[sym]
 		if !ok {
@@ -237,7 +243,7 @@ func (s *Server) handleSeries(w http.ResponseWriter, r *http.Request) {
 		}
 		resp = append(resp, out{
 			Symbol: sym, Label: label, Curve: curve,
-			Metrics: engine.ComputeMetrics(curve, engine.DailyScale(0)),
+			Metrics: engine.ComputeMetrics(curve, sc),
 		})
 	}
 	failed := map[string]string{}

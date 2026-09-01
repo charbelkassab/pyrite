@@ -25,25 +25,47 @@ const TradingDaysPerYear = 252.0
 // The periods figure matters more than it looks. A Sharpe ratio computed on
 // 1-minute bars and annualised as though they were daily is out by roughly a
 // factor of twenty, in the flattering direction.
+// The bar size is only half of it. How many bars of that size a year holds
+// depends on the market: 252 daily bars for a US equity, 365 for bitcoin, 261
+// for spot FX. Annualising a crypto series at 252 leaves its volatility short
+// by a sixth and its Sharpe scaled by the wrong root, and nothing in the
+// output says so. Hence Calendar: the same trades, scored on the calendar
+// that actually produced the bars.
 type Scale struct {
 	// PeriodsPerYear is how many bars of this run's size fit in a year.
 	PeriodsPerYear float64
 	// RiskFree is the annual risk-free rate, as a fraction.
 	RiskFree float64
+	// Calendar records which market's sessions PeriodsPerYear was counted
+	// from, so a result can say what it annualised by rather than leaving a
+	// reader to infer it from the number.
+	Calendar market.Calendar
 }
 
 // DailyScale is the conventional daily setting.
 func DailyScale(riskFree float64) Scale {
-	return Scale{PeriodsPerYear: TradingDaysPerYear, RiskFree: riskFree}
+	return Scale{PeriodsPerYear: TradingDaysPerYear, RiskFree: riskFree,
+		Calendar: market.CalendarUSEquity}
 }
 
-// ScaleFor builds a Scale for a bar size.
+// ScaleFor builds a Scale for a bar size on the US equity calendar.
 func ScaleFor(iv market.Interval, riskFree float64) Scale {
-	ppy := TradingDaysPerYear
-	if iv.Valid() {
-		ppy = iv.PeriodsPerYear()
+	return ScaleOn(iv, market.CalendarUSEquity, riskFree)
+}
+
+// ScaleOn builds a Scale for a bar size on a given trading calendar.
+//
+// An unset or unrecognised calendar means US equities, so every caller that
+// has never heard of a calendar keeps the numbers it always had.
+func ScaleOn(iv market.Interval, cal market.Calendar, riskFree float64) Scale {
+	if !cal.Valid() {
+		cal = market.CalendarUSEquity
 	}
-	return Scale{PeriodsPerYear: ppy, RiskFree: riskFree}
+	ppy := cal.SessionsPerYear()
+	if iv.Valid() {
+		ppy = iv.PeriodsPerYearOn(cal)
+	}
+	return Scale{PeriodsPerYear: ppy, RiskFree: riskFree, Calendar: cal}
 }
 
 // Periods is the annualisation factor, never zero.
@@ -73,3 +95,11 @@ func (s Scale) Sharpe(mean, sd float64) float64 {
 
 // Vol annualises a per-bar standard deviation.
 func (s Scale) Vol(sd float64) float64 { return sd * s.Root() }
+
+// Market is the calendar this scale counted its sessions from.
+func (s Scale) Market() market.Calendar {
+	if !s.Calendar.Valid() {
+		return market.CalendarUSEquity
+	}
+	return s.Calendar
+}

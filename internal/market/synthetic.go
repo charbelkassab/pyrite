@@ -84,19 +84,29 @@ func (s *SyntheticProvider) Fetch(ctx context.Context, symbol string, from, to D
 		cycleAmp = 0.02
 	}
 
-	const tradingDaysPerYear = 252.0
-	muDaily := annDrift / tradingDaysPerYear
-	sigDaily := annVol / math.Sqrt(tradingDaysPerYear)
+	// A generated series has to keep the calendar its ticker implies, or the
+	// offline path manufactures a bitcoin that shuts at weekends — a market
+	// that does not exist, audited and annualised as though it did. The
+	// annual drift and volatility are spread over that calendar's sessions
+	// for the same reason: the figures above are per year, and how many bars
+	// a year holds is the thing that varies.
+	cal := CalendarForSymbol(symbol)
+	sessions := cal.SessionsPerYear()
+	muDaily := annDrift / sessions
+	sigDaily := annVol / math.Sqrt(sessions)
 
 	var bars []Bar
 	i := 0
 	for d := start; d <= end; d = d.Add(1) {
-		wd := d.Time().Weekday()
-		if wd == time.Saturday || wd == time.Sunday {
-			continue
-		}
-		if isSyntheticHoliday(d) {
-			continue
+		if cal != CalendarContinuous {
+			if IsWeekend(d) {
+				continue
+			}
+			// FX runs through the exchange holidays and stops only at the
+			// weekend.
+			if cal != CalendarFX && isSyntheticHoliday(d) {
+				continue
+			}
 		}
 
 		cycle := cycleAmp * math.Sin(2*math.Pi*float64(i)/cycleLen)
@@ -219,12 +229,17 @@ func (s *SyntheticProvider) FetchInterval(ctx context.Context, symbol string, fr
 		return nil, err
 	}
 
-	perSession := int(iv.PeriodsPerYear() / tradingSessionsPerYear)
+	cal := CalendarForSymbol(symbol)
+	perSession := int(iv.BarsPerSession(cal))
 	if perSession < 1 {
 		perSession = 1
 	}
-	// The US regular session, in UTC, which is what NewStamp records.
-	const openHour, openMinute = 14, 30
+	// The US regular session, in UTC, which is what NewStamp records. A
+	// market that never closes starts its day at midnight instead.
+	openHour, openMinute := 14, 30
+	if cal != CalendarUSEquity {
+		openHour, openMinute = 0, 0
+	}
 
 	bars := make([]Bar, 0, len(daily.Bars)*perSession)
 	for _, d := range daily.Bars {
