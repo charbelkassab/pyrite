@@ -5,6 +5,7 @@ import (
 	"hash/fnv"
 	"math"
 	"math/rand"
+	"sort"
 	"strings"
 	"time"
 )
@@ -159,10 +160,20 @@ func (s *SyntheticProvider) Search(ctx context.Context, query string) ([]Quote, 
 	if out[0].Name == "" {
 		out[0].Name = q + " (synthetic)"
 	}
-	for sym, name := range syntheticNames {
-		if sym != q && strings.Contains(strings.ToUpper(name), q) {
-			out = append(out, Quote{Symbol: sym, Name: name, Type: "EQUITY"})
+	// Sorted, so the same query returns the same list in the same order.
+	// Ranging the map directly reshuffled the suggestions under the search
+	// box on every keystroke, which reads as the search being broken. Not a
+	// numeric bug like the four this class has already produced in the
+	// engine, but the same mistake.
+	rest := make([]string, 0, len(syntheticNames))
+	for sym := range syntheticNames {
+		if sym != q && strings.Contains(strings.ToUpper(syntheticNames[sym]), q) {
+			rest = append(rest, sym)
 		}
+	}
+	sort.Strings(rest)
+	for _, sym := range rest {
+		out = append(out, Quote{Symbol: sym, Name: syntheticNames[sym], Type: "EQUITY"})
 	}
 	return out, nil
 }
