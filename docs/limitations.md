@@ -59,6 +59,31 @@ inside the memory budget; when they do not, the field is `null` rather than
 zero, because a zero would read as "no overfitting at all" — the most flattering
 possible answer, arrived at by having computed nothing.
 
+**The reality check's benchmark is cash, and cash is a low bar.** White's
+Reality Check and Hansen's SPA both test the null that the best variant of a
+search has no positive expected performance *relative to the risk-free rate*.
+Anything long the market for most of a rising decade clears that bar, and a
+small p-value there is not the same as an edge — it is the reason the null
+strategy comparison exists beside it. The two p-values are reported as a pair
+and the conclusion is taken from the larger: rejecting on one and not the other
+has not rejected anything. Hansen's is the more powerful of the two only when
+the search contains variants that are poor beyond doubt, which is what its
+recentring discards; in a sweep where every cell is respectable the two differ
+only by the studentising and can land either way round.
+
+**The null strategy comparison tests timing, not selection.** The random
+strategies are the real one's own stretches in the market, relocated at random
+over the same prices, so they match it exactly on trade count, on the
+distribution of holding periods and on total exposure. What they do not match
+is which symbol was held: they hold an equally weighted basket of everything
+the strategy traded. So for a strategy whose edge is picking names rather than
+picking moments the comparison is measuring the wrong half, and the reported
+score is the strategy's exposure path over that basket rather than its headline
+Sharpe — both numbers are shown so the gap between them is visible. It is not
+computed at all for a strategy that was in the market essentially all the time
+or essentially none of it, because in either case every random arrangement is a
+copy of the strategy and the percentile would be noise.
+
 **Walk-forward is honest about selection, not about the data.** Choosing
 parameters on one window and reporting on the next removes the search from the
 reported number. It does not remove survivorship bias from the universe, or

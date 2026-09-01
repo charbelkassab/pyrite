@@ -192,6 +192,21 @@ func (r *Report) writeRobustness(b *strings.Builder) {
 		fmt.Fprintf(b, "| Deflated Sharpe | %s | confidence the edge survives the trial count |\n",
 			pctText(float64(rb.DeflatedSharpe)))
 	}
+	if rc := rb.RealityCheck; rc.RealityCheckP.Defined() {
+		fmt.Fprintf(b, "| Reality check p-value | %s | White's, over %d stationary-bootstrap "+
+			"resamples of all %d trials |\n",
+			FormatPValue(float64(rc.RealityCheckP), rc.Bootstraps), rc.Bootstraps, rc.Trials)
+		fmt.Fprintf(b, "| Hansen SPA p-value | %s | the studentised version, which the search's "+
+			"dead cells do not drag down |\n", FormatPValue(float64(rc.SPAP), rc.Bootstraps))
+	}
+	if ns := rb.NullStrategy; ns.Percentile.Defined() {
+		fmt.Fprintf(b, "| Beats random entries | %s | against %d random strategies with the same "+
+			"%d holds, holding periods and %s exposure |\n",
+			pctText(float64(ns.Percentile)), ns.Trials, ns.Episodes, pctText(ns.AvgExposure))
+		fmt.Fprintf(b, "| Random entries, median | %s | what arbitrary timing with those habits "+
+			"scored, against %s for the strategy |\n",
+			ratioText(ns.NullMedian), ratioText(ns.Score))
+	}
 	b.WriteString("\n")
 }
 

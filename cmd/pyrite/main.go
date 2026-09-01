@@ -66,7 +66,9 @@ Common flags:
   --offline     use synthetic data, no network, no keys
   --json        print machine readable output
 
-  run:          --cost-scan  re-run at 0, 5, 20 and 50 bps of slippage
+  run:          --cost-scan       re-run at 0, 5, 20 and 50 bps of slippage
+                --null-strategy  compare against random trading with the
+                                 same trade count, holding period and exposure
   sweep:        --param fast=10,20,50   --objective sharpe   --csv out.csv
   walkforward:  --train 504  --test 126  --embargo 200  --anchored
   improve:      --budget 6   --holdout 0.3   --goal "..."
@@ -220,6 +222,8 @@ func cmdRun(args []string) error {
 	example := fs.String("example", "",
 		"run a bundled example; `pyrite examples` lists them")
 	costScan := fs.Bool("cost-scan", false, "also re-run at 0, 5, 20 and 50 bps of slippage")
+	nullStrategy := fs.Bool("null-strategy", false,
+		"also compare against random strategies matched on trade count, holding period and exposure")
 	impact := fs.Float64("impact", 0,
 		"market impact coefficient; 1 is the usual estimate, 0 disables the model")
 	interval := fs.String("interval", "1d",
@@ -390,7 +394,45 @@ func cmdRun(args []string) error {
 		}
 		printCostScan(scan)
 	}
+	// The null comparison is behind a flag for the same reason: it is another
+	// question again — not "how much survives friction" but "how much of this
+	// is just being in the market" — and it costs a thousand extra passes over
+	// the return series to answer.
+	if *nullStrategy {
+		printNullComparison(engine.RunNullStrategy(ctx, res, a.Store, 0, spec.Seed))
+	}
 	return nil
+}
+
+// printNullComparison reports one run against random trading with the same
+// habits.
+func printNullComparison(ns engine.NullStrategy) {
+	fmt.Printf("\nOr is it just being in the market?\n")
+	if !ns.Percentile.Defined() {
+		reason := ns.Verdict
+		if reason == "" {
+			reason = "the price series for what this strategy traded could not be rebuilt"
+		}
+		fmt.Printf("  %s\n", wrapIndent(reason, 74, "  "))
+		return
+	}
+	fmt.Printf("  %-30s %14d\n", "Random strategies generated", ns.Trials)
+	fmt.Printf("  %-30s %14d\n", "Matched on holds", ns.Episodes)
+	fmt.Printf("  %-30s %14s\n", "Matched on median hold",
+		fmt.Sprintf("%d bars", ns.MedianHoldBars))
+	fmt.Printf("  %-30s %14s\n", "Matched on average exposure", pct(ns.AvgExposure))
+	fmt.Printf("  %-30s %14s\n", "Strategy, timing only", ratio(ns.Score))
+	fmt.Printf("  %-30s %14s\n", "Random, median", ratio(ns.NullMedian))
+	fmt.Printf("  %-30s %14s\n", "Random, 95th percentile", ratio(ns.NullP95))
+	fmt.Printf("  %-30s %14s\n", "Percentile", pct(float64(ns.Percentile)))
+	if ns.ReportedSharpe.Defined() && ns.Score.Defined() {
+		fmt.Printf("\n  Against a reported Sharpe of %s. The two differ by whatever the\n"+
+			"  strategy did other than choose when to be invested.\n",
+			ratio(ns.ReportedSharpe))
+	}
+	if ns.Verdict != "" {
+		fmt.Printf("\n  %s\n", wrapIndent(ns.Verdict, 74, "  "))
+	}
 }
 
 // printCostScan reports the same strategy at several friction levels.

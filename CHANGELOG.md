@@ -35,6 +35,26 @@ the CLI flags may all move.
   Markdown document, verdict first.
 - **Cost sensitivity.** `--cost-scan` re-runs at 0, 5, 20 and 50 bps and
   interpolates the break-even.
+- **Reality check and SPA.** `pyrite sweep` runs White's Reality Check and
+  Hansen's Superior Predictive Ability test over every trial's return series at
+  once, stationary-bootstrapped, so the search is judged as the search it was
+  rather than as one strategy. Both p-values are reported: they differ by the
+  recentring Hansen added, and the gap between them is a measure of how much
+  dead weight the sweep carried.
+- **Null strategy distribution.** `pyrite sweep`, and `pyrite run
+  --null-strategy`, place a strategy against a thousand random ones matched to
+  it on trade count, on the distribution of holding periods and — the part that
+  decides whether the comparison means anything — on exposure. Only the entry
+  timing is randomised; the prices are untouched.
+- **A weak draw in the bootstrap.** The block bootstrap picked its starting
+  points with a modulus, which reads a linear congruential generator's weaker
+  low bits. The effect was small — measured against the known answer for an
+  iid bootstrap, it tracked the theoretical resample variance to within half a
+  percent at most series lengths and ran about 2.5% low at the short end — but
+  it ran in the flattering direction, because a resample that covers its
+  series more evenly than chance understates variance and so understates every
+  p-value drawn from it. Now drawn from the high bits. Numbers `Bootstrap`
+  reports move in the third decimal place.
 
 ### Bar sizes
 

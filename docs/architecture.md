@@ -40,6 +40,8 @@ params.go        declared tunables and grid expansion
 sweep.go         the parallel search
 walkforward.go   rolling train/test evaluation
 robustness.go    deflated Sharpe, PBO, bootstrap, plateau
+realitycheck.go  White's Reality Check and Hansen's SPA over the trials
+nullstrategy.go  the winner against random entries matched on its habits
 costs.go         the same strategy at several friction levels
 agent.go         guided search, and the holdout wall
 critique.go      what is wrong with this result
@@ -97,7 +99,9 @@ POST /api/sweeps {prompt|code, grids, objective, walk_forward, ...}
            └─ each run: OmitDayRecords, full metrics kept
          AssessRobustness            spread, plateau, expected max
          AddPBO                      combinatorially symmetric CV
+         AddRealityCheck             White and Hansen, same return matrix
          AddDeflatedSharpe           winner's own skew and kurtosis
+         RunNullStrategy             winner against matched random entries
          Finish                      write the verdict last
 ```
 

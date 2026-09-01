@@ -112,6 +112,8 @@ without being asked.
 | --- | --- |
 | **Deflated Sharpe** | whether the Sharpe survives the number of strategies you tried to find it |
 | **Probability of backtest overfitting** | how often the in-sample winner lands below median out of sample |
+| **Reality check and SPA** | whether the best of everything you tried beats doing nothing, allowing for how much you tried |
+| **Null strategy distribution** | whether it beats trading at random with the same trade count, holding periods and exposure |
 | **Walk-forward efficiency** | how much of the improvement survives on data the search never saw |
 | **Plateau ratio** | whether the winner sits on a ridge or is a lone spike |
 | **Cost sensitivity** | the slippage at which the edge disappears |
@@ -275,6 +277,14 @@ instantly. The statistics put numbers on it:
   the same period, how often the in-sample winner lands below median out of
   sample. 50% is a coin flip.
 - **Neighbour support** — how the cells beside the winner scored.
+- **Reality check and SPA p-values** — White's and Hansen's tests, run over
+  every trial's return series at once rather than the winner's alone. The null
+  is that the best of them has no positive expected performance; the benchmark
+  it is stated against is holding cash, which is a low bar for anything long
+  the market.
+- **Beats random entries** — the winner against a thousand random strategies
+  matched to it on trade count, on holding periods and on exposure. A strategy
+  that cannot beat matched random trading has no edge, whatever its Sharpe is.
 
 ![The parameter surface, the robustness statistics and the verdict](docs/images/screenshot-search.png)
 

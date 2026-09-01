@@ -36,6 +36,17 @@ type SweepSpec struct {
 	// for PBO, in floats. Default 8 million, about 64MB — beyond that the
 	// statistic is skipped rather than exhausting the machine to compute it.
 	MaxReturnCells int
+	// Bootstraps is the number of stationary-bootstrap resamples behind the
+	// reality check and the SPA test. Default 1000. Below 200 the p-values are
+	// too coarse to report and the tests are skipped.
+	Bootstraps int
+	// NullTrials is how many random strategies the winner is compared against.
+	// Default 1000; negative disables the comparison.
+	NullTrials int
+	// Seed makes the bootstrap and the random strategies reproducible. It is
+	// taken from Base.Seed when unset, so a sweep of a seeded spec is
+	// reproducible without a second knob to remember.
+	Seed int64
 }
 
 // SweepRow is one combination and what it scored.
@@ -180,6 +191,12 @@ func RunSweep(ctx context.Context, ss SweepSpec, store *market.Store, progress S
 	}
 	if ss.MaxReturnCells <= 0 {
 		ss.MaxReturnCells = 8 << 20
+	}
+	if ss.NullTrials == 0 {
+		ss.NullTrials = defaultNullTrials
+	}
+	if ss.Seed == 0 {
+		ss.Seed = ss.Base.Seed
 	}
 	score, ok := objectives[ss.Objective]
 	if !ok {
@@ -329,9 +346,15 @@ func RunSweep(ctx context.Context, ss SweepSpec, store *market.Store, progress S
 		res.Best = append(res.Best, k.res)
 	}
 	res.Robustness = AssessRobustness(res.Rows, ss.Objective)
+	sc := ScaleFor(ss.Base.Interval, ss.Base.RiskFreeRate)
 	if keepReturns {
+		// One aligned matrix, three statistics. PBO asks whether selecting
+		// among the trials transfers; the reality check asks whether the best
+		// of them is worth anything at all. Both read the same rows, and
+		// neither re-runs a backtest.
 		if ok, matrix := alignedTrialReturns(returns, ss.MaxReturnCells); ok {
 			res.Robustness.AddPBO(matrix, ss.PBOBlocks)
+			res.Robustness.AddRealityCheck(matrix, sc, ss.Bootstraps, 0, ss.Seed)
 		}
 	}
 	if len(res.Best) > 0 {
@@ -341,7 +364,10 @@ func RunSweep(ctx context.Context, ss SweepSpec, store *market.Store, progress S
 				sharpes = append(sharpes, float64(row.Sharpe))
 			}
 		}
-		res.Robustness.AddDeflatedSharpe(res.Best[0].Curve, sharpes, ScaleFor(ss.Base.Interval, ss.Base.RiskFreeRate))
+		res.Robustness.AddDeflatedSharpe(res.Best[0].Curve, sharpes, sc)
+		if ss.NullTrials > 0 {
+			res.Robustness.NullStrategy = RunNullStrategy(ctx, res.Best[0], store, ss.NullTrials, ss.Seed)
+		}
 	}
 	// The verdict is written last, once every statistic that feeds it exists.
 	res.Robustness.Finish(ss.Objective)
