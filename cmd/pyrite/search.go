@@ -820,6 +820,7 @@ func cmdReport(args []string) error {
 	htmlOut := fs.String("html", "", "also write a self-contained HTML report here")
 	skipSweep := fs.Bool("no-sweep", false, "skip the parameter search")
 	skipWF := fs.Bool("no-walkforward", false, "skip the walk-forward evaluation")
+	skipScenarios := fs.Bool("no-scenarios", false, "skip the historical crisis replay")
 	train := fs.Int("train", 504, "walk-forward training window in sessions")
 	test := fs.Int("test", 126, "walk-forward test window in sessions")
 
@@ -888,7 +889,20 @@ func cmdReport(args []string) error {
 		}
 	}
 
-	// 4. Cost sensitivity and the bootstrap, both cheap once the rest is done.
+	// 4. The named crises, which the calendar attribution raises and cannot
+	//    settle: a year is an arbitrary slice, and a strategy that averages
+	//    out over 2020 still has to answer for March.
+	if !*skipScenarios {
+		fmt.Fprintf(os.Stderr, "replaying the named crises...\n")
+		sc, err := engine.RunScenarios(s.ctx, engine.ScenarioSpec{Base: s.spec}, s.app.Store, nil)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "  skipped: %s\n", truncate(err.Error(), 70))
+		} else {
+			rep.Scenarios = sc
+		}
+	}
+
+	// 5. Cost sensitivity and the bootstrap, both cheap once the rest is done.
 	fmt.Fprintf(os.Stderr, "scanning costs...\n")
 	if scan, err := engine.RunCostScan(s.ctx, s.spec, s.app.Store, nil); err == nil {
 		rep.Costs = scan
@@ -906,7 +920,7 @@ func cmdReport(args []string) error {
 	}
 	rep.Bootstrap = engine.Bootstrap(rep.Run.Curve, 2000, 21, s.spec.Seed)
 
-	// 5. What is left once known risk premia are taken out. The proxies are
+	// 6. What is left once known risk premia are taken out. The proxies are
 	//    ETFs, so this needs price data the run itself did not necessarily
 	//    load; a period the funds do not cover costs the section, not the
 	//    document.
@@ -918,7 +932,7 @@ func cmdReport(args []string) error {
 		fmt.Fprintf(os.Stderr, "  skipped: %s\n", truncate(err.Error(), 70))
 	}
 
-	// 6. The prose, when a model is available. Everything above stands
+	// 7. The prose, when a model is available. Everything above stands
 	//    without it, so a missing key costs a paragraph, not the document.
 	if s.app.Cfg.AnyProviderEnabled() {
 		fmt.Fprintf(os.Stderr, "writing the summary...\n")

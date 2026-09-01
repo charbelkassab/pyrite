@@ -40,6 +40,7 @@ Usage:
   pyrite run --example NAME         run a bundled strategy, no key needed
   pyrite examples                   list the bundled strategies
   pyrite report "<strategy>"        the full battery, as one document
+  pyrite scenarios "<strategy>"     replay it through named historical crises
 
 Searching, because one backtest is one point in a space:
   pyrite sweep "<strategy>"         every combination, plus a heatmap and
@@ -99,7 +100,9 @@ Common flags:
   walkforward:  --train 504  --test 126  --embargo 200  --anchored
   improve:      --budget 6   --holdout 0.3   --goal "..."
   report:       --out report.md  --html report.html  --no-sweep
-                --no-walkforward
+                --no-walkforward  --no-scenarios
+  scenarios:    --list        print the windows and their dates, run nothing
+                --from/--to   consider only windows inside that range
 
 Model provider keys are read from the environment:
   OPENAI_API_KEY, CEREBRAS_API_KEY, KIMI_API_KEY (or MOONSHOT_API_KEY)
@@ -116,6 +119,7 @@ Examples:
   pyrite sweep "golden cross on SPY" --from 2015-01-01
   pyrite walkforward "each month hold the 20 strongest S&P 500 names" --universe sp500
   pyrite report "a 60/40 portfolio rebalanced quarterly" --html report.html
+  pyrite scenarios --example sixty-forty
 `
 
 func main() {
@@ -175,6 +179,8 @@ func run() error {
 		return cmdImprove(args)
 	case "report":
 		return cmdReport(args)
+	case "scenarios":
+		return cmdScenarios(args)
 	case "examples":
 		return cmdExamples(args)
 	case "ledger":
