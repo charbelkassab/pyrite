@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime/debug"
 	"sort"
 	"strings"
 	"syscall"
@@ -29,7 +30,23 @@ import (
 )
 
 // version is overridden at build time with -ldflags "-X main.version=..."
-var version = "dev"
+// version is stamped by the Makefile's ldflags for a release build. A build
+// produced by `go install <module>@<version>` gets no ldflags at all, and
+// that is the install path the README leads with, so the module's own
+// recorded version is used when nothing was stamped — otherwise everyone
+// installing the documented way is told they are running "dev".
+var version = versionOrBuildInfo("dev")
+
+func versionOrBuildInfo(stamped string) string {
+	if stamped != "dev" && stamped != "" {
+		return stamped
+	}
+	info, ok := debug.ReadBuildInfo()
+	if !ok || info.Main.Version == "" || info.Main.Version == "(devel)" {
+		return stamped
+	}
+	return info.Main.Version
+}
 
 const usage = `pyrite — describe a trading strategy in plain language, then find out
 whether the result means anything.
