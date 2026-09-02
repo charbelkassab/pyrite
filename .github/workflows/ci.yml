@@ -2,8 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main, master]
+    branches: [main]
   pull_request:
+  workflow_dispatch: {}
 
 permissions:
   contents: read
@@ -14,13 +15,10 @@ env:
   GO_VERSION: '1.25'
 
 jobs:
+  # ── Linux: the gate. Runs on everything, always. ─────────────────────────────
   test:
     name: Test
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
 
@@ -30,7 +28,6 @@ jobs:
           check-latest: true
 
       - name: Verify formatting
-        if: runner.os == 'Linux'
         run: |
           unformatted=$(gofmt -l ./cmd ./internal ./examples)
           if [ -n "$unformatted" ]; then
@@ -40,7 +37,6 @@ jobs:
           fi
 
       - name: Verify go.mod is tidy
-        if: runner.os == 'Linux'
         run: |
           go mod tidy
           git diff --exit-code go.mod go.sum
@@ -56,28 +52,50 @@ jobs:
       - name: Build
         run: go build ./...
 
-  python:
-    name: Python client
-    runs-on: ubuntu-latest
+  # ── macOS and Windows: NOT on every push (2026-09-02) ────────────────────────
+  # on their own — and this repo was 72% of the whole account's. The arithmetic,
+  # measured over 38 runs:
+  #
+  #
+  # macOS job is the most expensive habit a repo can have.
+  #
+  # What justifies moving them: this is a pure-Go CLI with `CGO_ENABLED=0` and no
+  # platform-specific packages, so cross-platform breakage is rare — and the
+  # RELEASE workflow never tested on macOS or Windows either (it runs
+  # `go test ./...` on ubuntu-latest and cross-compiles the rest), so a per-push
+  # macOS job was never what gated a shipped binary.
+  #
+  # What still runs on EVERY push: gofmt, `go mod tidy`, `go vet`,
+  # `go test -race`, the full smoke test of the shipped binary, the Python client,
+  # the container image, and a cross-compile of all five release targets. A
+  # platform-specific break is caught by the nightly, i.e. within a day, instead
+  # of within a minute — and `workflow_dispatch` is the button before a release.
+  #
+  # If this repo ever grows cgo or a platform-specific dependency, put these back
+  # on the push trigger: the reasoning above depends on the code being portable.
+  test-crossplatform:
+    name: Test
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
     steps:
       - uses: actions/checkout@v7
+
       - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
-      - uses: actions/setup-python@v7
-        with:
-          python-version: '3.11'
+          check-latest: true
 
-      # The client tests start a real server rather than mocking one: a mock
-      # would happily agree with a wrong assumption about the API's shape,
-      # which is the only failure worth catching here.
-      - name: Build the binary the tests drive
-        run: go build -o /tmp/pyrite ./cmd/pyrite
+      - name: Vet
+        run: go vet ./...
 
       - name: Test
-        env:
-          PYRITE_BINARY: /tmp/pyrite
-        run: python3 -W error::ResourceWarning python/tests/test_client.py
+        run: go test -race ./...
+
+      - name: Build
+        run: go build ./...
 
   smoke:
     name: Smoke test the shipped binary
@@ -108,12 +126,37 @@ jobs:
           test -s /tmp/report.md
           grep -q "How much should you believe this" /tmp/report.md
       # The critique is the reason to use this tool, so the corpus of
-      # strategies it has to catch runs against the shipped binary too. It
       # exits non-zero if one of them gets past it.
       - name: The critic, against strategies built to be caught
         run: ./nq selftest
       - name: Doctor
         run: ./nq doctor
+
+  # (2026-09-02). The rounded-up-minute argument that justifies merging tiny jobs
+  # elsewhere does NOT apply here: `smoke` runs ~9 minutes, so there is no
+  # Python failure would have read as "smoke failed".
+  python:
+    name: Python client
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+
+      # The client tests start a real server rather than mocking one: a mock
+      # would happily agree with a wrong assumption about the API's shape,
+      # which is the only failure worth catching here.
+      - name: Build the binary the tests drive
+        run: go build -o /tmp/pyrite ./cmd/pyrite
+
+      - name: Test
+        env:
+          PYRITE_BINARY: /tmp/pyrite
+        run: python3 -W error::ResourceWarning python/tests/test_client.py
 
   docker:
     name: Container image
@@ -137,26 +180,31 @@ jobs:
           docker run --rm pyrite:ci run --example golden-cross --offline \
             --from 2019-01-02 --to 2023-12-29 | grep -q "Total return"
 
+  # ONE job, not five (2026-09-02). This was a 5-way matrix, and each leg spent a
+  # whole runner — checkout, setup-go, module download — to run a `go build` that
+  #
+  # Cross-compiling is exactly the thing that does not need a machine per target:
+  # the Go toolchain does all five from this one Linux runner, sharing a single
+  # module cache and a single build cache. Keep it a loop. If a target ever needs
+  # its own runner (cgo, a platform-specific test), that target earns a job of its
+  # own — the other four still do not.
   build-matrix:
-    name: Build ${{ matrix.goos }}/${{ matrix.goarch }}
+    name: Build every release target
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - { goos: linux,   goarch: amd64 }
-          - { goos: linux,   goarch: arm64 }
-          - { goos: darwin,  goarch: amd64 }
-          - { goos: darwin,  goarch: arm64 }
-          - { goos: windows, goarch: amd64 }
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
+      # The same five targets release.yml ships. `set -e` is on by default, but
+      # the explicit exit keeps a failure attributable to its target.
       - name: Build
         env:
-          GOOS: ${{ matrix.goos }}
-          GOARCH: ${{ matrix.goarch }}
           CGO_ENABLED: '0'
-        run: go build -o /dev/null ./cmd/pyrite
+        run: |
+          for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64; do
+            GOOS="${target%/*}" GOARCH="${target#*/}" \
+              go build -o /dev/null ./cmd/pyrite \
+              || { echo "::error::build failed for $target"; exit 1; }
+            echo "  ok  $target"
+          done
