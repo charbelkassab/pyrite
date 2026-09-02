@@ -338,53 +338,53 @@ func verdictFor(s Scorecard) string {
 			"refers to has not finished yet. That is the normal state of this command for its " +
 			"first few days, and there is nothing to do but wait.")
 	case fw.Count == 0 && s.Pending > 0:
-		b.WriteString(fmt.Sprintf("%d recorded decisions, none of them old enough to score: the "+
+		fmt.Fprintf(&b, "%d recorded decisions, none of them old enough to score: the "+
 			"sessions they refer to have not finished yet. That is the normal state of this "+
-			"command for its first few days, and there is nothing to do but wait.", s.Pending))
+			"command for its first few days, and there is nothing to do but wait.", s.Pending)
 	case fw.Count == 0:
 		b.WriteString("Nothing here was recorded before its outcome existed, so there is no " +
 			"forward evidence at all — only a demonstration that the machinery runs.")
 	default:
 		n := fw.Count
-		b.WriteString(fmt.Sprintf("%d scored %s.", n, plural(n, "decision")))
+		fmt.Fprintf(&b, "%d scored %s.", n, plural(n, "decision"))
 		lo, hi := coinRange(n)
 		switch {
 		case n < 5:
 			b.WriteString(" That is not a sample, it is an anecdote: over this many, every hit " +
 				"rate from nothing to everything is ordinary.")
 		case n < minToSpeak:
-			b.WriteString(fmt.Sprintf(" That is far too few to mean anything. A coin flipped %d "+
+			fmt.Fprintf(&b, " That is far too few to mean anything. A coin flipped %d "+
 				"times lands between %.0f%% and %.0f%% heads in 95 runs out of 100, which covers "+
 				"most of the hit rates a strategy could show, so the figures above are entirely "+
 				"consistent with no skill whatsoever. The number worth watching for now is how "+
-				"many decisions there are, not what they say.", n, lo*100, hi*100))
+				"many decisions there are, not what they say.", n, lo*100, hi*100)
 		case n < enoughToArgue:
-			b.WriteString(fmt.Sprintf(" Enough to look at and not enough to conclude from: chance "+
+			fmt.Fprintf(&b, " Enough to look at and not enough to conclude from: chance "+
 				"alone puts a hit rate anywhere between %.0f%% and %.0f%% over this many, and one "+
-				"unusual session still moves the mean.", lo*100, hi*100))
+				"unusual session still moves the mean.", lo*100, hi*100)
 		default:
-			b.WriteString(fmt.Sprintf(" That is roughly %s of sessions, which is the point where "+
+			fmt.Fprintf(&b, " That is roughly %s of sessions, which is the point where "+
 				"these figures start being an argument rather than decoration. It is still one "+
-				"strategy over one stretch of one market.", approxSessions(n)))
+				"strategy over one stretch of one market.", approxSessions(n))
 		}
 		b.WriteString(tStatSentence(fw))
 	}
 
 	if s.Backfill.Count > 0 {
-		b.WriteString(fmt.Sprintf(" %d further %s recorded after the outcome already existed "+
+		fmt.Fprintf(&b, " %d further %s recorded after the outcome already existed "+
 			"(an --as-of backfill) and %s excluded from everything above: a decision written down "+
 			"once the answer was available is a test of this machinery, not evidence about the "+
 			"strategy.", s.Backfill.Count, plural(s.Backfill.Count, "decision was"),
-			plural(s.Backfill.Count, "is")))
+			plural(s.Backfill.Count, "is"))
 	}
 	if s.Unscorable > 0 {
-		b.WriteString(fmt.Sprintf(" %d could not be measured because a symbol they held has no "+
+		fmt.Fprintf(&b, " %d could not be measured because a symbol they held has no "+
 			"prices over the holding period; they are left out rather than counted as zero.",
-			s.Unscorable))
+			s.Unscorable)
 	}
 	if s.Flat > 0 {
-		b.WriteString(fmt.Sprintf(" %d of the scored decisions held nothing at all and count as "+
-			"a zero return, which is what they earned.", s.Flat))
+		fmt.Fprintf(&b, " %d of the scored decisions held nothing at all and count as "+
+			"a zero return, which is what they earned.", s.Flat)
 	}
 	return b.String()
 }

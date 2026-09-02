@@ -230,7 +230,7 @@ func (l *Log) readLocked() (Reading, error) {
 	if err != nil {
 		return r, fmt.Errorf("open the forward log %s: %w", l.path, err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	// A recorded book is small, but nothing bounds the number of symbols in
 	// it, so the scanner gets room rather than failing on a long line.
@@ -328,7 +328,7 @@ func (l *Log) Record(e Entry) (Entry, bool, error) {
 		}
 	}
 	if _, err := f.Write(append(line, '\n')); err != nil {
-		f.Close()
+		_ = f.Close()
 		return Entry{}, false, fmt.Errorf("append to the forward log %s: %w", l.path, err)
 	}
 	if err := f.Close(); err != nil {

@@ -105,7 +105,7 @@ func (g *GDELT) News(ctx context.Context, day market.Day, query string, limit in
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("gdelt returned %s", resp.Status)
 	}

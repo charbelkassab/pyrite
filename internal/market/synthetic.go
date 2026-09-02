@@ -214,8 +214,8 @@ func isSyntheticHoliday(d Day) bool {
 
 func round2(v float64) float64 { return math.Round(v*100) / 100 }
 
-// SupportedIntervals: the generator can produce any size, because it is
-// producing the bars rather than fetching them. That matters for more than
+// SupportedIntervals reports every bar size the generator can produce, which
+// is all of them: it is producing the bars rather than fetching them. That matters for more than
 // demos — it is what lets the intraday path be tested with no network.
 func (s *SyntheticProvider) SupportedIntervals() []Interval {
 	out := make([]Interval, 0, 8)

@@ -198,7 +198,7 @@ func auditCSVDir(dir string, only []string, from, to market.Day, unavailable map
 			continue
 		}
 		bars, err := market.ReadBarsCSV(f)
-		f.Close()
+		_ = f.Close()
 		if err != nil {
 			unavailable[sym] = fmt.Sprintf("could not parse %s: %v", path, err)
 			continue

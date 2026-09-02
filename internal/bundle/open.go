@@ -49,7 +49,7 @@ func Open(path string) (*Bundle, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open bundle: %w", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	info, err := f.Stat()
 	if err != nil {
@@ -191,7 +191,7 @@ func inflate(path string, f *zip.File) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open bundle %s: entry %q will not open: %w", path, f.Name, err)
 	}
-	defer rc.Close()
+	defer func() { _ = rc.Close() }()
 
 	// One byte past the cap, so an entry that lied about its size is detected
 	// rather than silently truncated.

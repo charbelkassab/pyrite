@@ -178,7 +178,7 @@ func declaredSetup(ctx context.Context, spec Spec, store *market.Store) ([]Param
 	return e.paramDecls, e.spec.Warmup, nil
 }
 
-// Sweep runs every combination of a strategy's parameters.
+// RunSweep runs every combination of a strategy's parameters.
 //
 // The parallelism here is the whole point, and it is close to free because of
 // how the pieces already fit: market.Store is read-only once loaded and guards

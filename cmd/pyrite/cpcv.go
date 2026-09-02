@@ -209,12 +209,19 @@ func groupList(gs []int) string {
 
 // writeCPCVCSV exports the splits, which carry the chosen parameters the
 // terminal table has to truncate.
-func writeCPCVCSV(path string, res *engine.CPCVResult) error {
+func writeCPCVCSV(path string, res *engine.CPCVResult) (err error) {
 	f, err := os.Create(path)
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() {
+		// A close failure on a file being written means the export was
+		// truncated, so it has to reach the caller rather than be dropped —
+		// otherwise the CSV looks written and is short.
+		if cerr := f.Close(); cerr != nil && err == nil {
+			err = cerr
+		}
+	}()
 
 	w := csv.NewWriter(f)
 	if err := w.Write([]string{"split", "test_groups", "train_sessions", "test_sessions",

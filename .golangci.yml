@@ -1,11 +1,10 @@
 # Linters beyond go vet. Deliberately a short list: every one here has caught
 # something real in Go code, and a linter that fires on style nobody agreed to
 # gets switched off wholesale, which loses the ones that matter.
-run:
-  timeout: 5m
+version: "2"
 
 linters:
-  disable-all: true
+  default: none
   enable:
     - errcheck      # an ignored error is the most common real bug in Go
     - govet
@@ -24,25 +23,38 @@ linters:
   # result instead of aborting the corpus. A linter that has to be
   # nolint-commented five times is one that does not fit the codebase.
 
-linters-settings:
-  misspell:
-    # "strat" is short for strategy throughout, not a typo for "start".
-    ignore-words:
-      - strat
+  settings:
+    staticcheck:
+      checks:
+        - all
+        # ST1005 wants short, uncapitalised, unpunctuated error strings. That
+        # is right for an error being wrapped by a caller and wrong for this
+        # codebase's user-facing ones, which are deliberately several
+        # sentences ending in what to do about it — "Widen the date range, or
+        # lower --groups." reads worse without the full stop, not better.
+        - "-ST1005"
+        # QF1001 rewrites !(a && b) into a De Morgan equivalent. In test
+        # assertions the negated form is usually the clearer statement of what
+        # must hold, and this is a suggestion rather than a correctness rule.
+        - "-QF1001"
 
-  errcheck:
-    # Printf-family writes to stdout cannot meaningfully fail, and checking
-    # every one would bury the errors that matter.
-    exclude-functions:
-      - fmt.Print
-      - fmt.Printf
-      - fmt.Println
-      - fmt.Fprint
-      - fmt.Fprintf
-      - fmt.Fprintln
+    misspell:
+      # "strat" is short for strategy throughout, not a typo for "start".
+      ignore-rules:
+        - strat
+    errcheck:
+      # Printf-family writes to stdout cannot meaningfully fail, and checking
+      # every one would bury the errors that matter.
+      exclude-functions:
+        - fmt.Print
+        - fmt.Printf
+        - fmt.Println
+        - fmt.Fprint
+        - fmt.Fprintf
+        - fmt.Fprintln
 
-issues:
-  exclude-rules:
-    # Tests may ignore errors freely; a failed setup shows up as a failed test.
-    - path: _test\.go
-      linters: [errcheck, bodyclose]
+  exclusions:
+    rules:
+      # Tests may ignore errors freely; a failed setup shows up as a failed test.
+      - path: _test\.go
+        linters: [errcheck, bodyclose]

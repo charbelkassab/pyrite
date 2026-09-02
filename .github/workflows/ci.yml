@@ -45,9 +45,12 @@ jobs:
         run: go vet ./...
 
       - name: Lint
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v8
         with:
-          version: v1.64.8
+          # v1 binaries are built with Go 1.24 and refuse a 1.25 module with
+          # "the Go language version used to build golangci-lint is lower than
+          # the targeted Go version". v2 is built with a newer toolchain.
+          version: v2.13.2
 
       # The whole suite runs against the deterministic synthetic data
       # provider, so CI needs no network access and no API keys.

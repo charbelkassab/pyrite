@@ -215,7 +215,7 @@ func (s *Searcher) duckduckgo(ctx context.Context, query string, limit int) ([]e
 	if err != nil {
 		return nil, fmt.Errorf("web search request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
 	if err != nil {
 		return nil, err
@@ -282,7 +282,7 @@ func (s *Searcher) yahooNews(ctx context.Context, query string, limit int) ([]en
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
 	if err != nil {
 		return nil, err

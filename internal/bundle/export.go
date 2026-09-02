@@ -202,16 +202,16 @@ func writeZip(path string, entries map[string][]byte) error {
 			Modified: time.Date(1980, 1, 1, 0, 0, 0, 0, time.UTC),
 		})
 		if err != nil {
-			f.Close()
+			_ = f.Close()
 			return fmt.Errorf("write bundle %s: add %s: %w", path, name, err)
 		}
 		if _, err := w.Write(entries[name]); err != nil {
-			f.Close()
+			_ = f.Close()
 			return fmt.Errorf("write bundle %s: add %s: %w", path, name, err)
 		}
 	}
 	if err := zw.Close(); err != nil {
-		f.Close()
+		_ = f.Close()
 		return fmt.Errorf("write bundle %s: %w", path, err)
 	}
 	if err := f.Close(); err != nil {

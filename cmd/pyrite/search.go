@@ -135,7 +135,7 @@ func cmdSweep(args []string) error {
 	}
 	defer s.cancel()
 
-	var lastPct int = -1
+	lastPct := -1
 	res, err := engine.RunSweep(s.ctx, engine.SweepSpec{
 		Base: s.spec, Grids: params.grids, Workers: *workers,
 		MaxCombos: *maxCombos, Objective: *objective, KeepBest: 1,
@@ -610,12 +610,19 @@ func printWalkForward(plan *strategy.Plan, res *engine.WalkForwardResult) {
 }
 
 // writeSweepCSV exports the full table.
-func writeSweepCSV(path string, res *engine.SweepResult) error {
+func writeSweepCSV(path string, res *engine.SweepResult) (err error) {
 	f, err := os.Create(path)
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() {
+		// A close failure on a file being written means the export was
+		// truncated, so it has to reach the caller rather than be dropped —
+		// otherwise the CSV looks written and is short.
+		if cerr := f.Close(); cerr != nil && err == nil {
+			err = cerr
+		}
+	}()
 
 	w := csv.NewWriter(f)
 	header := append(append([]string{}, res.Axes...),
@@ -644,12 +651,19 @@ func writeSweepCSV(path string, res *engine.SweepResult) error {
 }
 
 // writeFoldsCSV exports the walk-forward folds.
-func writeFoldsCSV(path string, res *engine.WalkForwardResult) error {
+func writeFoldsCSV(path string, res *engine.WalkForwardResult) (err error) {
 	f, err := os.Create(path)
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() {
+		// A close failure on a file being written means the export was
+		// truncated, so it has to reach the caller rather than be dropped —
+		// otherwise the CSV looks written and is short.
+		if cerr := f.Close(); cerr != nil && err == nil {
+			err = cerr
+		}
+	}()
 
 	w := csv.NewWriter(f)
 	if err := w.Write([]string{"fold", "train_start", "train_end", "test_start", "test_end",

@@ -84,7 +84,7 @@ func cmdDiff(args []string) error {
 		return err
 	}
 	if len(sources.items) != 2 {
-		return fmt.Errorf("diff compares exactly two strategies; %d given. Name them with "+
+		return fmt.Errorf("diff compares exactly two strategies; %d given — name them with "+
 			"--example or --code-file, in either combination:\n"+
 			"  pyrite diff --example golden-cross --example mean-reversion\n"+
 			"  pyrite diff --example golden-cross --code-file tweaked.js\n"+

@@ -104,7 +104,9 @@ func (l *Ledger) Record(e Entry) error {
 		return fmt.Errorf("open ledger %s: %w", l.path, err)
 	}
 	if _, err := f.Write(append(line, '\n')); err != nil {
-		f.Close()
+		// The write error is the one being reported; a close failure on top
+		// of it tells the caller nothing extra.
+		_ = f.Close()
 		return fmt.Errorf("append to ledger %s: %w", l.path, err)
 	}
 	if err := f.Close(); err != nil {
@@ -187,8 +189,10 @@ func (l *Ledger) Reset(datasetKey string) error {
 	for _, e := range kept {
 		line, err := json.Marshal(e)
 		if err != nil {
-			tmp.Close()
-			os.Remove(tmp.Name())
+			// Cleaning up after a failure; the error being returned is the
+			// one that matters, not a problem removing the temporary file.
+			_ = tmp.Close()
+			_ = os.Remove(tmp.Name())
 			return fmt.Errorf("encode ledger entry: %w", err)
 		}
 		// The error is deliberately not checked here: bufio.Writer holds the
@@ -196,16 +200,16 @@ func (l *Ledger) Reset(datasetKey string) error {
 		_, _ = w.Write(append(line, '\n'))
 	}
 	if err := w.Flush(); err != nil {
-		tmp.Close()
-		os.Remove(tmp.Name())
+		_ = tmp.Close()
+		_ = os.Remove(tmp.Name())
 		return fmt.Errorf("rewrite ledger %s: %w", l.path, err)
 	}
 	if err := tmp.Close(); err != nil {
-		os.Remove(tmp.Name())
+		_ = os.Remove(tmp.Name())
 		return fmt.Errorf("rewrite ledger %s: %w", l.path, err)
 	}
 	if err := os.Rename(tmp.Name(), l.path); err != nil {
-		os.Remove(tmp.Name())
+		_ = os.Remove(tmp.Name())
 		return fmt.Errorf("replace ledger %s: %w", l.path, err)
 	}
 	return nil
@@ -245,7 +249,7 @@ func (l *Ledger) readLocked() ([]Entry, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open ledger %s: %w", l.path, err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	var out []Entry
 	r := bufio.NewReader(f)

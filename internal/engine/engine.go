@@ -1,3 +1,17 @@
+// Package engine runs backtests and reports the evidence against them.
+//
+// The two halves matter equally. A strategy is JavaScript executed in a
+// sandbox with no filesystem, network, process or timer access, over price
+// data the engine feeds it one session at a time, with orders filling at the
+// next open because filling at a close the strategy has already seen is
+// lookahead. That produces an equity curve like any other backtester.
+//
+// The rest of the package exists to argue with that curve: deflated Sharpe
+// against the number of configurations tried, probability of backtest
+// overfitting, walk-forward and combinatorially purged cross-validation,
+// comparison against random strategies matched on trade count and exposure,
+// factor decomposition, capacity under market impact, and a critique that
+// names what is wrong with a result in the language a person would use.
 package engine
 
 import (

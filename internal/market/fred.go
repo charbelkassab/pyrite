@@ -126,7 +126,7 @@ func (f *FRED) Series(ctx context.Context, id string) (*EconSeries, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("FRED returned %s for %s", resp.Status, id)
 	}

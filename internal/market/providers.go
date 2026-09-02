@@ -231,7 +231,7 @@ func (s *StooqProvider) Fetch(ctx context.Context, symbol string, from, to Day) 
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("stooq returned %s for %s", resp.Status, symbol)
 	}
@@ -279,7 +279,7 @@ func (c *CSVProvider) Fetch(ctx context.Context, symbol string, from, to Day) (*
 	if err != nil {
 		return nil, fmt.Errorf("%w: %s", ErrNotFound, symbol)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	bars, err := parseOHLCVCSV(f)
 	if err != nil {

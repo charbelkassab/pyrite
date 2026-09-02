@@ -300,7 +300,7 @@ func (c *Client) post(ctx context.Context, p *config.Provider, path string, payl
 	if err != nil {
 		return nil, 0, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, 16<<20))
 	if err != nil {
 		return nil, resp.StatusCode, err
@@ -377,7 +377,7 @@ func (c *Client) ListModels(ctx context.Context, providerName string) ([]ModelIn
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("%s: http %d", providerName, resp.StatusCode)

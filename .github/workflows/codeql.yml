@@ -19,6 +19,11 @@ permissions:
 jobs:
   analyze:
     name: Analyse
+    # Dependabot's pull requests run with a read-only token, so the upload of
+    # results fails with "Resource not accessible by integration" however the
+    # permissions block above is written. The scan itself is not skipped: the
+    # bump lands on main and is scanned by the push trigger moments later.
+    if: github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7

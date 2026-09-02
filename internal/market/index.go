@@ -57,7 +57,7 @@ func LoadMembership(index, dir string) (*Membership, error) {
 	if dir != "" {
 		override := filepath.Join(dir, index+"_membership.csv")
 		if f, err := os.Open(override); err == nil {
-			defer f.Close()
+			defer func() { _ = f.Close() }()
 			if err := m.parse(f); err != nil {
 				return nil, fmt.Errorf("parse %s: %w", override, err)
 			}
@@ -268,7 +268,7 @@ func (w *WikipediaIndex) wikitext(ctx context.Context, page string) (string, err
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("wikipedia returned %s for %s", resp.Status, page)
 	}

@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -147,7 +146,7 @@ func NewRunStore(dir string) (*RunStore, error) {
 func (s *RunStore) nextID() string {
 	// Millisecond timestamp in base36 is compact, chronologically sortable
 	// and collision-free for a single-user local tool.
-	return strings.ToLower(fmt.Sprintf("%s", base36(time.Now().UnixMilli())))
+	return strings.ToLower(base36(time.Now().UnixMilli()))
 }
 
 func base36(n int64) string {

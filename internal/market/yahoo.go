@@ -213,7 +213,7 @@ func (y *YahooProvider) get(ctx context.Context, endpoint string) ([]byte, error
 			continue
 		}
 		body, readErr := io.ReadAll(io.LimitReader(resp.Body, 32<<20))
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		if readErr != nil {
 			lastErr = readErr
 			continue
