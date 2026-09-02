@@ -6,6 +6,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and versions follow [semantic versioning](https://semver.org/) once there is a
 release to version.
 
+## v0.1.1 — 2026-09-02
+
+### Fixed
+
+- **`go install` produced a binary that called itself "dev".** The version is
+  stamped through ldflags by the Makefile, and `go install` applies none —
+  which would be a detail except that it is the first install instruction in
+  the README, so the documented path was the one giving the wrong answer. The
+  version now falls back to the module version Go records in the binary.
+
 ## v0.1.0 — 2026-09-01
 
 The first release. Everything below is the shape the project is published in.
