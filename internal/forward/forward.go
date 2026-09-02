@@ -449,7 +449,7 @@ func Intend(last engine.DayRecord, prices map[string]float64, maxLeverage float6
 	equity := last.Equity
 	for _, o := range last.Orders {
 		before := book[o.Symbol]
-		after := before
+		var after float64
 		switch {
 		case o.Kind == engine.KindWeight && o.IsTarget:
 			after = o.Weight

@@ -306,7 +306,7 @@ func (p *Portfolio) Execute(day market.Day, symbol string, shares, refPrice floa
 	if p.Impact != nil {
 		slipRate += p.Impact(symbol, shares)
 	}
-	fillPrice := refPrice
+	var fillPrice float64
 	if shares > 0 {
 		fillPrice = refPrice * (1 + slipRate)
 	} else {
@@ -371,7 +371,7 @@ func (p *Portfolio) Execute(day market.Day, symbol string, shares, refPrice floa
 	p.commission += commission
 	p.slippage += slipCost
 
-	side := SideBuy
+	var side Side
 	switch {
 	case shares > 0 && oldShares < 0:
 		side = SideCover

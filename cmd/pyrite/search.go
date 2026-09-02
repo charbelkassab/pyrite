@@ -29,15 +29,8 @@ type searchSetup struct {
 	app    *app.App
 	plan   *strategy.Plan
 	spec   engine.Spec
-	grids  map[string][]any
 	ctx    context.Context
 	cancel func()
-
-	objective string
-	workers   int
-	maxCombos int
-	asJSON    bool
-	csvPath   string
 }
 
 // addCommonSearchFlags registers the flags both search commands share.

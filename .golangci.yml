@@ -1,0 +1,48 @@
+# Linters beyond go vet. Deliberately a short list: every one here has caught
+# something real in Go code, and a linter that fires on style nobody agreed to
+# gets switched off wholesale, which loses the ones that matter.
+run:
+  timeout: 5m
+
+linters:
+  disable-all: true
+  enable:
+    - errcheck      # an ignored error is the most common real bug in Go
+    - govet
+    - ineffassign   # a value computed and thrown away is usually a mistake
+    - staticcheck
+    - unused
+    - misspell
+    - bodyclose     # an unclosed response body leaks a connection
+    - durationcheck
+    - errorlint     # comparing errors with == rather than errors.Is
+
+  # nilerr is deliberately absent. Every one of its findings here was a
+  # deliberate pattern rather than a bug: EOF ending a stdio session, a search
+  # over an unreadable directory returning no suggestions rather than failing
+  # the request, and the self-test recording a failed run as that case's
+  # result instead of aborting the corpus. A linter that has to be
+  # nolint-commented five times is one that does not fit the codebase.
+
+linters-settings:
+  misspell:
+    # "strat" is short for strategy throughout, not a typo for "start".
+    ignore-words:
+      - strat
+
+  errcheck:
+    # Printf-family writes to stdout cannot meaningfully fail, and checking
+    # every one would bury the errors that matter.
+    exclude-functions:
+      - fmt.Print
+      - fmt.Printf
+      - fmt.Println
+      - fmt.Fprint
+      - fmt.Fprintf
+      - fmt.Fprintln
+
+issues:
+  exclude-rules:
+    # Tests may ignore errors freely; a failed setup shows up as a failed test.
+    - path: _test\.go
+      linters: [errcheck, bodyclose]

@@ -3,6 +3,7 @@ package bundle
 import (
 	"bytes"
 	"encoding/csv"
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -69,7 +70,7 @@ func readBars(symbol, name string, data []byte) ([]market.Bar, error) {
 	bars := make([]market.Bar, 0, 1024)
 	for row := 2; ; row++ {
 		rec, err := cr.Read()
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			break
 		}
 		if err != nil {

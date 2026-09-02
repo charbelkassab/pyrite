@@ -191,7 +191,9 @@ func (l *Ledger) Reset(datasetKey string) error {
 			os.Remove(tmp.Name())
 			return fmt.Errorf("encode ledger entry: %w", err)
 		}
-		w.Write(append(line, '\n'))
+		// The error is deliberately not checked here: bufio.Writer holds the
+		// first failure and returns it from Flush below, which is checked.
+		_, _ = w.Write(append(line, '\n'))
 	}
 	if err := w.Flush(); err != nil {
 		tmp.Close()

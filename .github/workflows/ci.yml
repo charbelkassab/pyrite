@@ -44,10 +44,21 @@ jobs:
       - name: Vet
         run: go vet ./...
 
+      - name: Lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: v1.64.8
+
       # The whole suite runs against the deterministic synthetic data
       # provider, so CI needs no network access and no API keys.
       - name: Test
-        run: go test -race ./...
+        run: go test -race -coverprofile=coverage.out ./...
+
+      - name: Coverage
+        run: |
+          go tool cover -func=coverage.out | tail -1
+          pct=$(go tool cover -func=coverage.out | tail -1 | awk '{print $3}' | tr -d '%')
+          echo "### Coverage: ${pct}%" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Build
         run: go build ./...

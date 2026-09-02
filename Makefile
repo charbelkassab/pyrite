@@ -65,6 +65,10 @@ test-race:
 corpus: ## Live prompt corpus — uses real API calls and costs money
 	PYRITE_LIVE_TESTS=1 go test ./internal/strategy/ -run TestPromptCorpus -v -timeout 60m
 
+.PHONY: lint
+lint: ## Run golangci-lint with this repo's configuration
+	golangci-lint run ./...
+
 .PHONY: check
 check: fmt vet test ## Format, vet and test — run this before opening a PR
 

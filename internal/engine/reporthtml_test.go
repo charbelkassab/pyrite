@@ -2,6 +2,7 @@ package engine
 
 import (
 	"encoding/xml"
+	"errors"
 	"io"
 	"math"
 	"regexp"
@@ -35,7 +36,7 @@ func parseHTML(t *testing.T, doc string) {
 	depth := 0
 	for {
 		tok, err := dec.Token()
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			break
 		}
 		if err != nil {

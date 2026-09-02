@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -88,7 +89,8 @@ func (s *Server) callTool(ctx context.Context, raw json.RawMessage) (any, *rpcEr
 		// Anything else is a real answer to the question asked — a strategy
 		// that threw, a symbol with no data — and the agent needs to read it
 		// and try again, which it can only do if it arrives as a result.
-		if rerr, ok := err.(*rpcError); ok {
+		var rerr *rpcError
+		if errors.As(err, &rerr) {
 			return nil, rerr
 		}
 		return &toolResult{

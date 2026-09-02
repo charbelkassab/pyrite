@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"math/rand"
@@ -129,7 +130,8 @@ func (v *strategyVM) callFillHook(cb goja.Callable, f Fill) error {
 
 	_, err := cb(goja.Undefined(), v.ctxObj, obj)
 	if err != nil {
-		if ex, ok := err.(*goja.Exception); ok {
+		var ex *goja.Exception
+		if errors.As(err, &ex) {
 			return fmt.Errorf("%s", strings.TrimSpace(ex.String()))
 		}
 	}
@@ -145,7 +147,8 @@ func (v *strategyVM) callPeriodHook(cb goja.Callable) error {
 	defer close(done)
 	_, err := cb(goja.Undefined(), v.ctxObj)
 	if err != nil {
-		if ex, ok := err.(*goja.Exception); ok {
+		var ex *goja.Exception
+		if errors.As(err, &ex) {
 			return fmt.Errorf("%s", strings.TrimSpace(ex.String()))
 		}
 	}
@@ -195,7 +198,8 @@ func (v *strategyVM) callOnDay() error {
 
 	_, err := v.onDay(goja.Undefined(), v.ctxObj)
 	if err != nil {
-		if ex, ok := err.(*goja.Exception); ok {
+		var ex *goja.Exception
+		if errors.As(err, &ex) {
 			return fmt.Errorf("%s", strings.TrimSpace(ex.String()))
 		}
 		return err
